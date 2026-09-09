@@ -1,0 +1,535 @@
+// Prisma Schema for SIH25007 - Digital Farm Management
+// AI-Powered AMU, MRL, Withdrawal Period, Traceability & Food Safety Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------
+// 1. USERS & ROLES
+// ---------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         String    // FARMER | VETERINARIAN | FARM_TESTER | REGULATOR | ADMIN
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  isActive     Boolean   @default(true)
+
+  // Profile relations
+  farmerProfile       Farmer?
+  veterinarianProfile Veterinarian?
+  farmTesterProfile   FarmTester?
+  regulatorProfile    Regulator?
+
+  auditLogs           AuditLog[]
+  approvedCertificates MRLCertificate[] @relation("ApprovedCertificates")
+}
+
+model Farmer {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farmerId         String   @unique // e.g., FR10293
+  fullName         String
+  mobileNumber     String
+  farmLocation     String
+  fullAddress      String
+  animalCategories String   // JSON array or comma separated
+  approvalStatus   String   @default("PENDING") // PENDING | APPROVED | REJECTED | SUSPENDED
+  assignedVetId    String?
+  assignedVet      Veterinarian? @relation("AssignedVet", fields: [assignedVetId], references: [id])
+  farms            Farm[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  approvals        Approval[] @relation("FarmerApprovals")
+  certificates     MRLCertificate[]
+}
+
+model Veterinarian {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vetId            String   @unique // e.g., VT92A7K1
+  fullName         String
+  governmentId     String   @unique // exactly 8 chars
+  mobileNumber     String
+  address          String
+  qualification    String
+  licenseInfo      String
+  approvalStatus   String   @default("PENDING") // PENDING | APPROVED | REJECTED | SUSPENDED
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  assignedFarmers  Farmer[] @relation("AssignedVet")
+  treatments       Treatment[]
+  vaccinations     Vaccination[]
+  
+  approvals        Approval[] @relation("VetApprovals")
+}
+
+model FarmTester {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testerId         String   @unique // e.g., FT72B91K4
+  fullName         String
+  governmentId     String   @unique // exactly 8 chars
+  mobileNumber     String
+  address          String
+  qualification    String
+  labDetails       String
+  approvalStatus   String   @default("PENDING") // PENDING | APPROVED | REJECTED | SUSPENDED
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  productTests     TestResult[]
+  approvals        Approval[] @relation("TesterApprovals")
+  wasteClaims      WithdrawalWasteClaim[]
+}
+
+model Regulator {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName         String
+  department       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  approvalsGiven   Approval[] @relation("RegulatorApprovals")
+}
+
+// ---------------------------------------------------------
+// 2. FARM & ANIMALS
+// ---------------------------------------------------------
+
+model Farm {
+  id          String   @id @default(cuid())
+  farmId      String   @unique
+  name        String
+  location    String
+  farmerId    String
+  farmer      Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  animals     Animal[]
+  batches     AnimalBatch[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AnimalTag {
+  id          String   @id @default(cuid())
+  tag         String   @unique // 8 chars e.g. CW7A29K1
+  type        String   // INDIVIDUAL | BATCH
+  animalId    String?  @unique
+  animal      Animal?  @relation(fields: [animalId], references: [id])
+  batchId     String?  @unique
+  batch       AnimalBatch? @relation(fields: [batchId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  treatments  Treatment[]
+  vaccinations Vaccination[]
+  amuRecords  AMURecord[]
+  productTests TestResult[]
+}
+
+model Animal {
+  id          String   @id @default(cuid())
+  farmId      String
+  farm        Farm     @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  category    String   // Cow, Buffalo, Goat, Sheep, Pig
+  species     String
+  weight      Float?
+  status      String   @default("SAFE") // SAFE | WITHDRAWAL | DEAD
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  tag         AnimalTag?
+}
+
+model AnimalBatch {
+  id          String   @id @default(cuid())
+  farmId      String
+  farm        Farm     @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  category    String   // Chicken, Fish, Prawns
+  species     String
+  count       Int
+  biomass     Float?
+  avgWeight   Float?
+  waterTemp   Float?   // For aquaculture
+  status      String   @default("SAFE") // SAFE | WITHDRAWAL
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tag         AnimalTag?
+}
+
+// ---------------------------------------------------------
+// 3. MEDICINE & REFERENCES
+// ---------------------------------------------------------
+
+model MedicineReference {
+  id               String   @id @default(cuid())
+  medicineName     String
+  activeIngredient String
+  category         String   // Antibiotic, Antiparasitic, etc.
+  speciesApplicability String // JSON array or comma separated
+  route            String
+  referenceDose    String?
+  withdrawalRefs   WithdrawalReference[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model WithdrawalReference {
+  id                  String   @id @default(cuid())
+  referenceId         String   @unique
+  medicineId          String
+  medicine            MedicineReference @relation(fields: [medicineId], references: [id])
+  species             String
+  foodProduct         String
+  route               String
+  value               Float
+  unit                String   // days, degree-days
+  source              String
+  sourceTitle         String
+  version             String
+  effectiveDate       DateTime
+  lastVerifiedDate    DateTime
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model MRLReference {
+  id                  String   @id @default(cuid())
+  referenceId         String   @unique
+  substance           String
+  species             String
+  foodProduct         String
+  mrlValue            Float
+  unit                String   // mg/kg
+  source              String
+  version             String
+  effectiveDate       DateTime
+  lastVerifiedDate    DateTime
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// ---------------------------------------------------------
+// 4. TREATMENTS, VACCINATIONS & AMU
+// ---------------------------------------------------------
+
+model Treatment {
+  id               String   @id @default(cuid())
+  tagId            String
+  tag              AnimalTag @relation(fields: [tagId], references: [id])
+  vetId            String
+  vet              Veterinarian @relation(fields: [vetId], references: [id])
+  medicineName     String
+  activeIngredient String
+  dose             Float
+  doseUnit         String
+  route            String
+  frequency        String?
+  duration         Float?
+  dateAdministered DateTime
+  foodProduct      String?
+  location         String?
+  notes            String?
+  status           String   @default("ACTIVE") // ACTIVE | COMPLETED | WITHDRAWAL ACTIVE | SAFE | REVIEW REQUIRED
+  
+  withdrawal       WithdrawalRecord?
+  amuRecord        AMURecord?
+  blockchainRecord BlockchainRecord?
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Vaccination {
+  id               String   @id @default(cuid())
+  tagId            String
+  tag              AnimalTag @relation(fields: [tagId], references: [id])
+  vetId            String
+  vet              Veterinarian @relation(fields: [vetId], references: [id])
+  vaccineName      String
+  amountInjected   Float
+  unit             String
+  route            String
+  dateOfInjection  DateTime
+  location         String?
+  notes            String?
+  
+  blockchainRecord BlockchainRecord?
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model AMURecord {
+  id                   String   @id @default(cuid())
+  treatmentId          String   @unique
+  treatment            Treatment @relation(fields: [treatmentId], references: [id])
+  tagId                String
+  tag                  AnimalTag @relation(fields: [tagId], references: [id])
+  farmerId             String
+  medicine             String
+  activeIngredient     String
+  dose                 Float
+  doseUnit             String
+  weight               Float?
+  route                String
+  frequency            String?
+  duration             Float?
+  totalAmount          Float
+  date                 DateTime
+  vetId                String
+  location             String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model WithdrawalRecord {
+  id                   String   @id @default(cuid())
+  treatmentId          String   @unique
+  treatment            Treatment @relation(fields: [treatmentId], references: [id])
+  foodProduct          String
+  withdrawalPeriod     Float
+  unit                 String
+  safeFromDate         DateTime
+  status               String   // SAFE TO USE | WAIT UNTIL [DATE] | DO NOT USE | REVIEW REQUIRED
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// ---------------------------------------------------------
+// 5. PRODUCT TESTING & MRL
+// ---------------------------------------------------------
+
+model Product {
+  id          String   @id @default(cuid())
+  type        String   // Milk, Meat, Eggs, Fish, Prawns
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TestResult {
+  id                  String   @id @default(cuid())
+  testerId            String
+  tester              FarmTester @relation(fields: [testerId], references: [id])
+  farmerId            String
+  tagId               String
+  tag                 AnimalTag @relation(fields: [tagId], references: [id])
+  productType         String
+  sampleId            String   @unique
+  sampleCollectionDate DateTime
+  testDate            DateTime
+  testingLocation     String
+  substanceDetected   String
+  amountDetected      Float
+  unit                String
+  testMethod          String
+  additionalNotes     String?
+  
+  applicableMrl       Float?
+  difference          Float?
+  percentageOfMrl     Float?
+  status              String   // SAFE | WARNING | MRL EXCEEDED
+  
+  blockchainRecord    BlockchainRecord?
+  aiReport            AIReport?
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// ---------------------------------------------------------
+// 6. SYSTEM & AUDIT
+// ---------------------------------------------------------
+
+model Approval {
+  id              String   @id @default(cuid())
+  type            String   // FARMER_REGISTRATION | VET_REGISTRATION | TESTER_REGISTRATION
+  status          String   // APPROVED | REJECTED | SUSPENDED
+  reason          String?
+  
+  // Relations based on type
+  farmerId        String?
+  farmer          Farmer?  @relation("FarmerApprovals", fields: [farmerId], references: [id])
+  vetId           String?
+  vet             Veterinarian? @relation("VetApprovals", fields: [vetId], references: [id])
+  testerId        String?
+  tester          FarmTester? @relation("TesterApprovals", fields: [testerId], references: [id])
+  
+  regulatorId     String?
+  regulator       Regulator? @relation("RegulatorApprovals", fields: [regulatorId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Alert {
+  id              String   @id @default(cuid())
+  severity        String   // LOW | MEDIUM | HIGH | CRITICAL
+  status          String   @default("OPEN") // OPEN | ACKNOWLEDGED | RESOLVED
+  title           String
+  message         String
+  recipientRole   String?
+  recipientId     String?
+  deliveryStatus  String?
+  resolvedBy      String?
+  resolvedDate    DateTime?
+  resolutionNotes String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Notification {
+  id              String   @id @default(cuid())
+  userId          String
+  title           String
+  message         String
+  isRead          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  action          String
+  entity          String
+  entityId        String
+  previousData    String?  // JSON string
+  newData         String?  // JSON string
+  createdAt       DateTime @default(now())
+}
+
+model BlockchainRecord {
+  id              String   @id @default(cuid())
+  recordType      String   // TREATMENT | VACCINATION | TEST_RESULT | APPROVAL
+  recordId        String   // ID of the respective record
+  
+  treatmentId     String?  @unique
+  treatment       Treatment? @relation(fields: [treatmentId], references: [id])
+  vaccinationId   String?  @unique
+  vaccination     Vaccination? @relation(fields: [vaccinationId], references: [id])
+  testResultId    String?  @unique
+  testResult      TestResult? @relation(fields: [testResultId], references: [id])
+  
+  hash            String   // Deterministic hash of the data
+  txHash          String?  // Blockchain transaction hash
+  blockNumber     Int?
+  network         String   @default("localhost")
+  status          String   @default("PENDING") // PENDING | CONFIRMED | FAILED | VERIFIED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AIReport {
+  id              String   @id @default(cuid())
+  testResultId    String?  @unique
+  testResult      TestResult? @relation(fields: [testResultId], references: [id])
+  
+  result          String
+  dataConsidered  String   // JSON
+  referenceUsed   String
+  explanation     String
+  warning         String?
+  confidence      String
+  expertReviewReq Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ---------------------------------------------------------
+// 7. WITHDRAWAL WASTE & COMPENSATION CLAIMS
+// ---------------------------------------------------------
+
+model WithdrawalWasteClaim {
+  id                  String      @id @default(cuid())
+  claimId             String      @unique // e.g. WST-102934
+  testerId            String      // e.g. FT72B91K1
+  farmerId            String      // e.g. FR10293
+  animalType          String      // Cow, Buffalo, Goat, Sheep, Pig, Chicken, Fish, Prawns
+  animalId            String      // Tag ID e.g. RJ-CW1
+  date                DateTime
+  productType         String      // Milk, Meat, Eggs, Fish, Prawns
+  wasteAmount         Float       // Quantity discarded (> 0)
+  unit                String?     @default("kg")
+  aiRecommendedAmount Float       // In INR (₹)
+  aiReasoning         String?
+  status              String      @default("PENDING FSSAI APPROVAL") // PENDING FSSAI APPROVAL
+  notes               String?
+  
+  testerProfileId     String?
+  tester              FarmTester? @relation(fields: [testerProfileId], references: [id])
+  
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+}
+
+// ---------------------------------------------------------
+// 8. MRL-SAFE DIGITAL CERTIFICATION & AUDIT
+// ---------------------------------------------------------
+
+model MRLCertificate {
+  id                 String   @id @default(cuid())
+  certificateId      String   @unique // e.g. CERT-849201
+  farmerId           String   // Foreign key to Farmer.id
+  farmer             Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  farmerCode         String   // Mirror of Farmer.farmerId e.g. FR10293
+  approvedBy         String?  // Name / title of FSSAI regulator
+  approvedById       String?  // User id of regulator
+  approvedByUser     User?    @relation("ApprovedCertificates", fields: [approvedById], references: [id])
+  approvalStatus     String   @default("PENDING") // PENDING | APPROVED | REJECTED | EXPIRED
+  mrlStatus          String   @default("NOT_SET") // NOT_SET | SAFE | UNSAFE
+  validFrom          DateTime
+  validUntil         DateTime
+  verificationId     String   @unique // e.g. AGV-8F2K9L
+  qrPayload          String   // e.g. /certify/verify/AGV-8F2K9L
+  blockchainHash     String?  // Keccak-256 cryptographic hash of certificate proof
+  rejectionReason    String?
+  notes              String?
+  approvalTimestamp  DateTime?
+  statusTimestamp    DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  auditLogs          CertificateAuditLog[]
+
+  @@index([farmerId])
+  @@index([farmerCode])
+  @@index([verificationId])
+  @@index([approvalStatus])
+  @@index([mrlStatus])
+}
+
+model CertificateAuditLog {
+  id             String   @id @default(cuid())
+  certificateId  String
+  certificate    MRLCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  regulatorId    String
+  regulatorName  String?
+  action         String   // CREATED | APPROVED | SAFE_SET | UNSAFE_SET | REJECTED | EXPIRED
+  previousStatus String?
+  newStatus      String?
+  details        String?
+  timestamp      DateTime @default(now())
+
+  @@index([certificateId])
+}
+

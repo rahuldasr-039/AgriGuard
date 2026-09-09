@@ -1,0 +1,207 @@
+{
+  "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "abi": [
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TreatmentLogged",
+      "inputs": [
+        {
+          "type": "string",
+          "name": "tagId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "prescriptionId",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "date",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "dataHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "recordedBy",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "timestamp",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "animalTreatments",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "string",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "prescriptionId"
+        },
+        {
+          "type": "uint256",
+          "name": "date"
+        },
+        {
+          "type": "bytes32",
+          "name": "dataHash"
+        },
+        {
+          "type": "address",
+          "name": "recordedBy"
+        },
+        {
+          "type": "uint256",
+          "name": "timestamp"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getTreatmentCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "string",
+          "name": "tagId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getTreatments",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "string",
+          "name": "tagId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple[]",
+          "name": "",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "prescriptionId"
+            },
+            {
+              "type": "uint256",
+              "name": "date"
+            },
+            {
+              "type": "bytes32",
+              "name": "dataHash"
+            },
+            {
+              "type": "address",
+              "name": "recordedBy"
+            },
+            {
+              "type": "uint256",
+              "name": "timestamp"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "logTreatment",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "string",
+          "name": "tagId"
+        },
+        {
+          "type": "uint256",
+          "name": "prescriptionId"
+        },
+        {
+          "type": "uint256",
+          "name": "date"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "totalTreatments",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "verifyTreatment",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "string",
+          "name": "tagId"
+        },
+        {
+          "type": "uint256",
+          "name": "index"
+        },
+        {
+          "type": "uint256",
+          "name": "prescriptionId"
+        },
+        {
+          "type": "uint256",
+          "name": "date"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": "isValid"
+        }
+      ]
+    }
+  ]
+}

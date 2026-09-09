@@ -1,0 +1,18 @@
+{
+  "name": "sih25007-digital-farm-management",
+  "version": "1.0.0",
+  "description": "AMU/MRL Tracker for Digital Farm Management (SIH25007)",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix backend && npm install --prefix smart-contracts && npm install --prefix web-dashboard",
+    "setup:db": "cd backend && npx prisma generate && npx prisma db push",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:web": "cd web-dashboard && npm run dev",
+    "dev:blockchain": "cd smart-contracts && npx hardhat node",
+    "test:contracts": "cd smart-contracts && npx hardhat test",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:web\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
