@@ -1,8 +1,65 @@
 const express = require("express");
+const { PrismaClient } = require("@prisma/client");
 const { authenticate } = require("../middleware/auth");
 const { GoogleGenAI } = require("@google/genai");
 
 const router = express.Router();
+const prisma = new PrismaClient();
+
+/**
+ * Universal Groq API Caller supporting llama-3.3-70b-versatile with fallbacks
+ * Uses process.env.GROQ_API_KEY securely on the backend (never exposed to browser)
+ */
+async function callGroq(messages, systemInstruction = "", userKey = null) {
+  const apiKey = (userKey && userKey.trim().length > 5) 
+    ? userKey.trim() 
+    : (process.env.GROQ_API_KEY || process.env.GROQ_KEY);
+  if (!apiKey || apiKey.trim().length < 5) return null;
+
+  try {
+    const formattedMessages = [
+      ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
+      ...(Array.isArray(messages) 
+        ? messages.map(m => ({ role: m.role || "user", content: m.content || String(m) })) 
+        : [{ role: "user", content: String(messages) }])
+    ];
+
+    const models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"];
+    for (const model of models) {
+      try {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey.trim()}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model,
+            messages: formattedMessages,
+            temperature: 0.2,
+            max_tokens: 1200
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.choices?.[0]?.message?.content) {
+            return {
+              text: data.choices[0].message.content,
+              model: `Groq (${model})`,
+              source: "groq"
+            };
+          }
+        }
+      } catch (innerErr) {
+        console.warn(`Groq ${model} attempt failed:`, innerErr.message);
+      }
+    }
+  } catch (err) {
+    console.warn("Groq API unserviceable, falling back to next engine:", err.message);
+  }
+  return null;
+}
 
 /**
  * Universal Gemini Caller supporting gemini-2.0-flash with fallback to gemini-1.5-flash
@@ -202,7 +259,7 @@ Under national food safety surveillance guidelines and veterinary pharmacovigila
 }
 
 // ==========================================
-// 1. UNIVERSAL CHAT ENDPOINT
+// 1. UNIVERSAL CHAT ENDPOINT (UPGRADED WITH GROQ & DB GROUNDING)
 // POST /api/v1/ai/chat
 // ==========================================
 router.post("/chat", async (req, res) => {
@@ -212,11 +269,147 @@ router.post("/chat", async (req, res) => {
       return res.status(400).json({ error: "Message is required" });
     }
 
-    const systemInstruction = `You are AgriGuard AI, an expert, authoritative, and helpful generative AI assistant specialized in veterinary pharmacology, livestock farming, Antimicrobial Usage (AMU), Maximum Residue Limits (MRL), FSSAI food safety regulations, Codex Alimentarius, blockchain traceability (Ethereum/Sepolia), and agricultural economics in India. 
-Respond in clear, professional, richly formatted Markdown (tables, bullet points, bold text). 
-${language ? `If requested language is ${language}, provide responses tailored for that language where appropriate.` : ""}`;
+    // 1. Fetch Real Database Context to prevent hallucination
+    const text = message.toLowerCase();
+    let dbFacts = [];
 
-    // Attempt Gemini call
+    try {
+      // Look up animals matching keywords or tags
+      const words = message.match(/[A-Za-z0-9-_]{3,}/g) || [];
+      const stopWords = ["what", "when", "safe", "date", "cows", "goat", "milk", "tell", "show", "help", "about", "your", "give"];
+      const candidateTags = words.filter(w => !stopWords.includes(w.toLowerCase()));
+
+      let foundAnimals = [];
+      for (const tag of candidateTags.slice(0, 3)) {
+        const matches = await prisma.animal.findMany({
+          where: {
+            OR: [
+              { tagId: { contains: tag } },
+              { name: { contains: tag } }
+            ]
+          },
+          take: 3,
+          include: {
+            farmer: { select: { name: true, farmName: true, uniqueFarmerId: true } },
+            treatments: {
+              take: 3,
+              orderBy: { createdAt: "desc" }
+            }
+          }
+        });
+        if (matches.length) foundAnimals.push(...matches);
+      }
+
+      if (foundAnimals.length > 0) {
+        dbFacts.push("### Real Animal Records in AgriGuard:\n" + foundAnimals.map(a => 
+          `- Tag ID: ${a.tagId} (${a.name || "Animal"}, Species: ${a.species})\n  Farmer: ${a.farmer?.name || "N/A"} (${a.farmer?.farmName || ""})\n  Current Status: ${a.status}\n  Treatments: ${a.treatments?.length ? a.treatments.map(t => `${t.medicineName} (Safe Date: ${new Date(t.safeFromDate).toLocaleDateString()}, Status: ${t.status})`).join("; ") : "No active treatments"}`
+        ).join("\n"));
+      } else if (text.includes("cow") || text.includes("animal") || text.includes("safe date") || text.includes("withdrawal")) {
+        const recentTreatments = await prisma.treatment.findMany({
+          take: 4,
+          orderBy: { createdAt: "desc" },
+          include: {
+            animal: true,
+            farmer: { select: { name: true, farmName: true } }
+          }
+        });
+        if (recentTreatments.length) {
+          dbFacts.push("### Recent Treatment Records in AgriGuard System:\n" + recentTreatments.map(t => 
+            `- Animal: ${t.animal?.name || "Animal"} (Tag: ${t.animal?.tagId || "N/A"}, Species: ${t.animal?.species || "Cattle"})\n  Medicine: ${t.medicineName} (${t.activeIngredient || ""})\n  Withdrawal Period: ${t.withdrawalDays} days (${t.milkWithholdingHours || 0} hrs milk)\n  Safe Clearance Date: ${new Date(t.safeFromDate).toLocaleDateString()}\n  Status: ${t.status}`
+          ).join("\n"));
+        }
+      }
+
+      // Look up MRL tests if relevant
+      if (text.includes("mrl") || text.includes("test") || text.includes("ppm") || text.includes("residue")) {
+        const recentTests = await prisma.productTest.findMany({
+          take: 3,
+          orderBy: { createdAt: "desc" }
+        });
+        if (recentTests.length) {
+          dbFacts.push("### Recent Lab Test Records:\n" + recentTests.map(pt => 
+            `- Sample: ${pt.productType} | Substance: ${pt.detectedSubstance} | Conc: ${pt.concentrationPpm} ppm (MRL Limit: ${pt.statutoryMrlPpm} ppm) | Status: ${pt.status}`
+          ).join("\n"));
+        }
+      }
+
+      // Look up compensation claims if relevant
+      if (text.includes("subsidy") || text.includes("compensation") || text.includes("claim") || text.includes("dbt") || text.includes("waste")) {
+        const recentClaims = await prisma.wasteCompensationClaim.findMany({
+          take: 3,
+          orderBy: { createdAt: "desc" }
+        });
+        if (recentClaims.length) {
+          dbFacts.push("### Recent Waste Compensation Claims:\n" + recentClaims.map(c => 
+            `- Claim #${c.claimNumber || c.id.slice(0,8)}: Quantity: ${c.quantityKgL} ${c.unit} (${c.productType}) | ₹${c.totalCompensation} | Status: ${c.status}`
+          ).join("\n"));
+        }
+      }
+    } catch (dbErr) {
+      console.warn("DB Context query skipped:", dbErr.message);
+    }
+
+    const contextBlock = dbFacts.length > 0 
+      ? `\n\nVERIFIED AGRIGUARD DATABASE RECORDS:\n${dbFacts.join("\n\n")}\n` 
+      : "";
+
+    const languageMap = {
+      ta: "Tamil (தமிழ்)",
+      hi: "Hindi (हिन्दी)",
+      te: "Telugu (తెలుగు)",
+      kn: "Kannada (ಕನ್ನಡ)",
+      ml: "Malayalam (മലയാളം)",
+      bn: "Bengali (বাংলা)",
+      mr: "Marathi (मराठी)",
+      gu: "Gujarati (ગુજરાતી)",
+      pa: "Punjabi (ਪੰਜਾਬੀ)",
+      or: "Odia (ଓଡ଼ିଆ)",
+      as: "Assamese (অসমীয়া)",
+      en: "English"
+    };
+    const targetLangName = languageMap[language] || language || "English";
+    const isIndianLang = language && language !== "en";
+
+    const systemInstruction = `You are AgriGuard AI, an authoritative, intelligent, and helpful AI assistant embedded in the AgriGuard Digital Farm Management System (SIH25007).
+AgriGuard tracks Antimicrobial Usage (AMU), Maximum Residue Limits (MRL), statutory withdrawal periods, direct benefit transfer (DBT) waste compensation, blockchain records (Sepolia testnet), and consumer QR verification.
+
+USER ROLE: ${role || "FARMER"}
+${isIndianLang ? `MANDATORY LANGUAGE REQUIREMENT: The user interface is set to ${targetLangName}. You MUST respond entirely and naturally in ${targetLangName}. Do NOT respond in English. Translate all explanations, advice, numbers, and warnings into ${targetLangName}. Keep technical identifiers (Tag IDs, TxHashes, medicine names like Oxytetracycline) accurate.` : "LANGUAGE: English"}
+
+KNOWLEDGE & SCOPE:
+1. 🐄 Animals & Safe Dates: Explain withdrawal periods, safe clearance dates, and why milk/meat cannot be sold during withdrawal.
+2. 💊 Medicines & AMU: Explain drug withdrawal rules, species compatibility, and WHO AWaRe classification.
+3. 🧪 MRL Testing: Explain statutory limits (Codex & FSSAI), ppm concentrations, and safe thresholds.
+4. 📜 Certificates & QR: Explain weekly digital compliance certification and public QR food safety validation.
+5. 💰 Subsidies & DBT: Explain waste compensation for milk/meat discarded during withdrawal (e.g. goat milk ₹85/L, cow milk ₹44/L, chevon ₹720/kg).
+6. 🌾 AgriGuard & Blockchain: Explain how immutable Ethereum smart contracts (TreatmentLedger.sol) prevent fraud and protect food safety.
+
+CRITICAL ANTI-HALLUCINATION RULES:
+- Never invent or hallucinate animal records, treatment dates, safe dates, certificate IDs, or compensation amounts.
+- If specific data for an animal, farm, or treatment requested by the user is present in the VERIFIED AGRIGUARD DATABASE RECORDS below, use those exact dates and details.
+- If the user asks for specific data about an animal or record that is NOT in the database records, do NOT make up dates or numbers. Clearly state in ${targetLangName} that no record was found for that ID in AgriGuard.
+- For farmers, speak in simple, friendly, respectful language.
+${contextBlock}`;
+
+    // Format multi-turn conversation messages
+    const chatMessages = [
+      ...(Array.isArray(history) 
+        ? history.map(h => ({ role: h.role === "assistant" || h.role === "bot" ? "assistant" : "user", content: h.content || h.text || "" }))
+        : []),
+      { role: "user", content: message }
+    ];
+
+    // Priority 1: Groq API (llama-3.3-70b-versatile)
+    const groqResult = await callGroq(chatMessages, systemInstruction, apiKey);
+    if (groqResult) {
+      return res.json({
+        reply: groqResult.text,
+        modelUsed: groqResult.model,
+        source: "groq"
+      });
+    }
+
+    // Priority 2: Google Gemini (gemini-2.0-flash / 1.5-flash)
     const geminiResult = await callGemini(message, systemInstruction, apiKey);
     if (geminiResult) {
       return res.json({
@@ -226,7 +419,226 @@ ${language ? `If requested language is ${language}, provide responses tailored f
       });
     }
 
-    // Fallback to AgriGuard Domain Synthesizer
+    // Priority 3: AgriGuard Local Domain Knowledge & Anti-Hallucination Engine
+    // Check for Tamil / Tanglish queries or Tamil language selection
+    if (language === "ta" || text.includes("vanakkam") || text.includes("eppadi") || text.includes("pasu") || text.includes("paal") || text.includes("marunthu") || text.includes("tamil") || text.includes("tanglish")) {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — வணக்கம் (Farmer Assistance)
+**வணக்கம் விவசாயி அவர்களே!** நான் அக்ரிகார்ட் (AgriGuard) செயற்கை நுண்ணறிவு உதவியாளர்.
+
+1. **🐄 மாடு & பால் பாதுகாப்பு (Safe Date):**
+   மருந்து கொடுத்த காலத்தில், மருந்தின் தாக்கம் பாலில் இருக்கும். அந்த காலம் (Withdrawal Period) முடியும் வரை பாலை விற்கவோ பயன்படுத்தவோ கூடாது.
+
+2. **💰 நஷ்ட ஈடு (DBT Compensation):**
+   பாதிக்கப்பட்ட பால்/இறைச்சியை வெளியேற்றினால், அரசாங்க மானியம் (DBT) உங்களுக்கு வங்கிக் கணக்கில் நேரடியாக கிடைக்கும் (பசு பால்: ₹44/L, ஆட்டு பால்: ₹85/L).
+
+3. **📱 சான்றிதழ் (MRL Safe):**
+   சோதனை முடிந்து பாதுகாப்பானதும் உங்களுக்கு **MRL SAFE** டிஜிட்டல் சான்றிதழ் மற்றும் QR Code கிடைக்கும்.
+
+*உங்களுக்கு குறிப்பிட்ட விலங்கு அல்லது மருந்து பற்றி விவரம் வேண்டுமா? டேக் ஐடி (Tag ID) அனுப்பவும்!*`,
+        modelUsed: "AgriGuard Domain Synthesizer (Tamil/Local)",
+        source: "local"
+      });
+    }
+
+    // Check for Hindi queries or Hindi language selection
+    if (language === "hi") {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — किसान सहायता (Farmer Assistance)
+**नमस्ते किसान भाई!** मैं एग्रीगार्ड (AgriGuard) एआई सहायक हूं।
+
+1. **🐄 पशु एवं दूध सुरक्षा (Safe Date):**
+   उपचार के दौरान एंटीबायोटिक का असर दूध और मांस में रहता है। निकासी अवधि (Withdrawal Period) पूरी होने तक दूध या मांस न बेचें।
+
+2. **💰 अपशिष्ट मुआवजा (DBT Compensation):**
+   निकासी अवधि में नष्ट किए गए दूध/मांस के लिए डीबीटी के माध्यम से सीधे आपके बैंक खाते में मुआवजा मिलता है (गाय का दूध: ₹44/L, बकरी का दूध: ₹85/L)।
+
+3. **📜 एमआरएल सुरक्षित प्रमाण पत्र (MRL Safe):**
+   परीक्षण पूरा होने और सुरक्षित पाए जाने पर आपको **MRL SAFE** डिजिटल प्रमाण पत्र और क्यूआर कोड मिलता है।
+
+*क्या आपको किसी विशिष्ट पशु या दवा के बारे में जानकारी चाहिए? कृपया टैग आईडी (Tag ID) बताएं।*`,
+        modelUsed: "AgriGuard Domain Synthesizer (Hindi/Local)",
+        source: "local"
+      });
+    }
+
+    // Check for Telugu queries or Telugu language selection
+    if (language === "te") {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — రైతు సహాయం (Farmer Assistance)
+**నమస్కారం రైతు సోదరులారా!** నేను అగ్రిగార్డ్ (AgriGuard) AI సహాయకుడిని.
+
+1. **🐄 జంతువు & పాల భద్రత (Safe Date):**
+   యాంటీబయాటిక్ చికిత్స సమయంలో ఔషధం ప్రభావం పాలు మరియు మాంసంలో ఉంటుంది. విత్‌డ్రావల్ గడువు ముగిసే వరకు పాలను విక్రయించకూడదు.
+
+2. **💰 వ్యర్థాల పరిహారం (DBT Compensation):**
+   ఈ కాలంలో పారబోసిన పాలు/మాంసానికి ప్రభుత్వం నుండి నేరుగా మీ బ్యాంక్ ఖాతాకు DBT పరిహారం అందుతుంది (ఆవు పాలు: ₹44/L, మేక పాలు: ₹85/L).
+
+3. **📜 MRL సేఫ్ సర్టిఫికెట్:**
+   పరీక్ష పూర్తయి సురక్షితమని తేలినప్పుడు మీకు **MRL SAFE** డిజిటల్ సర్టిఫికెట్ మరియు QR కోడ్ లభిస్తుంది.
+
+*మీ జంతువు లేదా చికిత్స గురించిన వివరాల కోసం ట్యాగ్ ID తెలపండి.*`,
+        modelUsed: "AgriGuard Domain Synthesizer (Telugu/Local)",
+        source: "local"
+      });
+    }
+
+    // Check for Kannada queries or Kannada language selection
+    if (language === "kn") {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — ರೈತ ಸಹಾಯವಾಣಿ (Farmer Assistance)
+**ನಮಸ್ಕಾರ ರೈತ ಬಾಂಧವರೇ!** ನಾನು ಅಗ್ರಿಗಾರ್ಡ್ (AgriGuard) AI ಸಹಾಯಕ.
+
+1. **🐄 ಹಾಲು ಮತ್ತು ಮಾಂಸ ಸುರಕ್ಷತೆ (Safe Date):**
+   ಆಂಟಿಬಯೋಟಿಕ್ ಚಿಕಿತ್ಸೆಯ ಸಮಯದಲ್ಲಿ ಔಷಧದ ಅಂಶವು ಹಾಲು ಮತ್ತು ಮಾಂಸದಲ್ಲಿ ಇರುತ್ತದೆ. ಹಿಂಪಡೆಯುವಿಕೆ ಅವಧಿ (Withdrawal Period) ಮುಗಿಯುವವರೆಗೆ ಮಾರಾಟ ಮಾಡಬೇಡಿ.
+
+2. **💰 ನಷ್ಟ ಪರಿಹಾರ (DBT Compensation):**
+   ಈ ಅವಧಿಯಲ್ಲಿ ತ್ಯಾಜ್ಯವಾದ ಹಾಲು/ಮಾಂಸಕ್ಕೆ ಸರ್ಕಾರದ ವತಿಯಿಂದ ನೇರವಾಗಿ ನಿಮ್ಮ ಖಾತೆಗೆ DBT ಪರಿಹಾರ ಜಮೆಯಾಗುತ್ತದೆ (ಹಸುವಿನ ಹಾಲು: ₹44/L, ಮೇಕೆ ಹಾಲು: ₹85/L).
+
+3. **📜 MRL ಸೇಫ್ ಪ್ರಮಾಣಪತ್ರ:**
+   ಪರೀಕ್ಷೆ ಯಶಸ್ವಿಯಾಗಿ ಮುಗಿದ ನಂತರ ನಿಮಗೆ **MRL SAFE** ಡಿಜಿಟಲ್ ಪ್ರಮಾಣಪತ್ರ ಮತ್ತು QR ಕೋಡ್ ದೊರೆಯುತ್ತದೆ.`,
+        modelUsed: "AgriGuard Domain Synthesizer (Kannada/Local)",
+        source: "local"
+      });
+    }
+
+    // Check for Malayalam queries or Malayalam language selection
+    if (language === "ml") {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — കർഷക സഹായം (Farmer Assistance)
+**നമസ്കാരം!** ഞാൻ അഗ്രിഗാർഡ് (AgriGuard) AI അസിസ്റ്റന്റാണ്.
+
+1. **🐄 പാലിന്റെയും മാംസത്തിന്റെയും സുരക്ഷ (Safe Date):**
+   മരുന്ന് നൽകിയ മൃഗങ്ങളുടെ പാൽ പിൻവലിക്കൽ കാലയളവ് (Withdrawal Period) കഴിയുന്നതുവരെ വിൽക്കരുത്.
+2. **💰 നഷ്ടപരിഹാരം (DBT Compensation):**
+   പാഴായ പാലിനും മാംസത്തിനും DBT വഴി നേരിട്ട് നിങ്ങളുടെ അക്കൗണ്ടിലേക്ക് നഷ്ടപരിഹാരം ലഭിക്കും (പശുവിൻ പാൽ: ₹44/L, ആട്ടിൻ പാൽ: ₹85/L).
+3. **📜 MRL സേഫ് സർട്ടിഫിക്കറ്റ്:**
+   പരിശോധന പൂർത്തിയായി സുരക്ഷിതമാണെന്ന് ഉറപ്പായാൽ **MRL SAFE** സർട്ടിഫിക്കറ്റും ക്യുആർ കോഡും ലഭിക്കും.`,
+        modelUsed: "AgriGuard Domain Synthesizer (Malayalam/Local)",
+        source: "local"
+      });
+    }
+
+    // Check for Bengali queries or Bengali language selection
+    if (language === "bn") {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — কৃষক সহায়তা (Farmer Assistance)
+**নমস্কার কৃষক বন্ধু!** আমি এগ্রিগগার্ড (AgriGuard) এআই সহকারী।
+
+1. **🐄 দুধ ও মাংসের নিরাপত্তা (Safe Date):**
+   অ্যান্টিবায়োটিক চিকিৎসার সময় দুধ ও মাংসে ওষুধের অবশিষ্টাংশ থাকে। প্রত্যাহার সময় (Withdrawal Period) শেষ না হওয়া পর্যন্ত পণ্য বিক্রি করবেন না।
+2. **💰 ক্ষতিপূরণ (DBT Compensation):**
+   নষ্ট হওয়া দুধের জন্য ডিবিটি (DBT)-র মাধ্যমে সরাসরি ব্যাঙ্ক অ্যাকাউন্টে ক্ষতিপূরণ দেওয়া হয় (গরুর দুধ: ₹44/L, ছাগলের দুধ: ₹85/L)।
+3. **📜 এমআরএল সেফ সার্টিফিকেট:**
+   পরীক্ষা সম্পূর্ণ হলে **MRL SAFE** ডিজিটাল সার্টিফিকেট এবং কিউআর কোড পাবেন।`,
+        modelUsed: "AgriGuard Domain Synthesizer (Bengali/Local)",
+        source: "local"
+      });
+    }
+
+    // Check for Marathi queries or Marathi language selection
+    if (language === "mr") {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — शेतकरी मदत (Farmer Assistance)
+**नमस्कार शेतकरी मित्र!** मी ॲग्रीगार्ड (AgriGuard) एआय सहाय्यक आहे.
+
+1. **🐄 दूध आणि मांस सुरक्षितता (Safe Date):**
+   औषधोपचारादरम्यान औषधाचा अंश दुधात राहतो. विथड्रॉल कालावधी (Withdrawal Period) संपेपर्यंत दूध किंवा मांस विकू नका.
+2. **💰 नुकसान भरपाई (DBT Compensation):**
+   वाया गेलेल्या दुधासाठी थेट बँक खात्यात DBT द्वारे भरपाई दिली जाते (गायीचे दूध: ₹44/L, शेळीचे दूध: ₹85/L).
+3. **📜 MRL सुरक्षित प्रमाणपत्र:**
+   तपासणी पूर्ण झाल्यानंतर आपल्याला **MRL SAFE** डिजिटल प्रमाणपत्र आणि QR कोड मिळतो.`,
+        modelUsed: "AgriGuard Domain Synthesizer (Marathi/Local)",
+        source: "local"
+      });
+    }
+
+    // Check for Gujarati queries or Gujarati language selection
+    if (language === "gu") {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — ખેડૂત સહાય (Farmer Assistance)
+**નમસ્તે ખેડૂત મિત્ર!** હું એગ્રીગાર્ડ (AgriGuard) AI સહાયક છું.
+
+1. **🐄 દૂધ અને માંસ સલામતી (Safe Date):**
+   દવા આપ્યા બાદ ઉપાડ અવધિ (Withdrawal Period) પૂર્ણ ન થાય ત્યાં સુધી દૂધ કે માંસ વેચશો નહીં.
+2. **💰 નુકસાન વળતર (DBT Compensation):**
+   આ સમયગાળામાં નષ્ટ થયેલા દૂધ માટે DBT દ્વારા સીધા ખાતામાં સહાય મળે છે (ગાયનું દૂધ: ₹44/L, બકરીનું દૂધ: ₹85/L).
+3. **📜 MRL સુરક્ષિત પ્રમાણપત્ર:**
+   ચકાસણી સફળ થયા બાદ **MRL SAFE** ડિજિટલ સર્ટિફિકેટ અને QR કોડ મળે છે.`,
+        modelUsed: "AgriGuard Domain Synthesizer (Gujarati/Local)",
+        source: "local"
+      });
+    }
+
+    // Check for Punjabi queries or Punjabi language selection
+    if (language === "pa") {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — ਕਿਸਾਨ ਸਹਾਇਤਾ (Farmer Assistance)
+**ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਕਿਸਾਨ ਵੀਰੋ!** ਮੈਂ ਐਗਰੀਗਾਰਡ (AgriGuard) ਏਆਈ ਸਹਾਇਕ ਹਾਂ।
+
+1. **🐄 ਦੁੱਧ ਅਤੇ ਮੀਟ ਸੁਰੱਖਿਆ (Safe Date):**
+   ਦਵਾਈ ਦੇਣ ਤੋਂ ਬਾਅਦ ਵਾਪਸੀ ਸਮਾਂ (Withdrawal Period) ਪੂਰਾ ਹੋਣ ਤੱਕ ਦੁੱਧ ਜਾਂ ਮੀਟ ਨਾ ਵੇਚੋ।
+2. **💰 ਨੁਕਸਾਨ ਮੁਆਵਜ਼ਾ (DBT Compensation):**
+   ਖਰਾਬ ਹੋਏ ਦੁੱਧ ਦਾ ਮੁਆਵਜ਼ਾ DBT ਰਾਹੀਂ ਸਿੱਧਾ ਤੁਹਾਡੇ ਬੈਂਕ ਖਾਤੇ ਵਿੱਚ ਭੇਜਿਆ ਜਾਂਦਾ ਹੈ (ਗਾਂ ਦਾ ਦੁੱਧ: ₹44/L, ਬੱਕਰੀ ਦਾ ਦੁੱਧ: ₹85/L)।
+3. **📜 MRL ਸੁਰੱਖਿਅਤ ਸਰਟੀਫਿਕੇਟ:**
+   ਜਾਂਚ ਮੁਕੰਮਲ ਹੋਣ 'ਤੇ ਤੁਹਾਨੂੰ **MRL SAFE** ਡਿਜੀਟਲ ਸਰਟੀਫਿਕੇਟ ਅਤੇ QR ਕੋਡ ਮਿਲਦਾ ਹੈ।`,
+        modelUsed: "AgriGuard Domain Synthesizer (Punjabi/Local)",
+        source: "local"
+      });
+    }
+
+    // Check for Odia queries or Odia language selection
+    if (language === "or") {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — କୃଷକ ସହାୟତା (Farmer Assistance)
+**ନମସ୍କାର କୃଷକ ଭାଇ!** ମୁଁ ଆଗ୍ରିଗାର୍ଡ (AgriGuard) AI ସହାୟକ।
+
+1. **🐄 କ୍ଷୀର ଏବଂ ମାଂସ ସୁରକ୍ଷା (Safe Date):**
+   ଔଷଧ ଦେବା ପରେ ପ୍ରତ୍ୟାହାର ଅବଧି (Withdrawal Period) ଶେଷ ନହେବା ପର୍ଯ୍ୟନ୍ତ କ୍ଷୀର କିମ୍ବା ମାଂସ ବିକ୍ରୟ କରନ୍ତୁ ନାହିଁ।
+2. **💰 କ୍ଷତିପୂରଣ (DBT Compensation):**
+   ନଷ୍ଟ ହୋଇଥିବା କ୍ଷୀର ପାଇଁ DBT ମାଧ୍ୟମରେ ସିଧାସଳଖ ଆପଣଙ୍କ ବ୍ୟାଙ୍କ ଖାତାକୁ ସହାୟତା ମିଳିଥାଏ (ଗାଈ କ୍ଷୀର: ₹44/L, ଛେଳି କ୍ଷୀର: ₹85/L)।
+3. **📜 MRL ସୁରକ୍ଷିତ ପ୍ରମାଣପତ୍ର:**
+   ପରୀକ୍ଷା ସଫଳ ହେବା ପରେ **MRL SAFE** ଡିଜିଟାଲ ପ୍ରମାଣପତ୍ର ଏବଂ QR କୋଡ୍ ପ୍ରଦାନ କରାଯାଏ।`,
+        modelUsed: "AgriGuard Domain Synthesizer (Odia/Local)",
+        source: "local"
+      });
+    }
+
+    // Check for Assamese queries or Assamese language selection
+    if (language === "as") {
+      return res.json({
+        reply: `### 🌾 AgriGuard AI — কৃষক সহায়ক (Farmer Assistance)
+**নমস্কাৰ কৃষক ভাইসকল!** মই এগ্ৰিগাৰ্ড (AgriGuard) AI সহায়ক।
+
+1. **🐄 গাখীৰ আৰু মাংসৰ সুৰক্ষা (Safe Date):**
+   ঔষধ প্ৰয়োগৰ পিছত প্ৰত্যাহাৰ সময়সীমা (Withdrawal Period) শেষ নোহোৱালৈকে গাখীৰ বা মাংস বিক্ৰী নকৰিব।
+2. **💰 ক্ষতিপূৰণ (DBT Compensation):**
+   নষ্ট হোৱা গাখীৰৰ বাবদ DBT-ৰ জৰিয়তে পোনপটীয়াকৈ বেংক একাউণ্টত ক্ষতিপূৰণ লাভ কৰিব (গৰুৰ গাখীৰ: ₹44/L, ছাগলীৰ গাখীৰ: ₹85/L)।
+3. **📜 MRL সুৰক্ষিত প্ৰমাণপত্ৰ:**
+   পৰীক্ষা সম্পূৰ্ণ হোৱাৰ পিছত আপুনি **MRL SAFE** ডিজিটেল প্ৰমাণপত্ৰ আৰু QR ক'ড লাভ কৰিব।`,
+        modelUsed: "AgriGuard Domain Synthesizer (Assamese/Local)",
+        source: "local"
+      });
+    }
+
+    // Check if user asked for an animal safe date but no record was matched
+    if ((text.includes("my cow") || text.includes("safe date") || text.includes("cow's safe date")) && dbFacts.length === 0) {
+      return res.json({
+        reply: `### 🐄 Animal Safe Clearance Date Information
+I searched the AgriGuard database, but **could not find an active treatment record** for this specific animal tag.
+
+#### What you can do:
+1. **Check Animal ID:** Look up your animal's registered tag (e.g. \`RJ-CW1\`, \`FR10293\`) on the [Farmer Animals Portal](/farmer/animals).
+2. **View Live Treatments:** See all ongoing treatments and countdown timers on the [Farmer Treatments Portal](/farmer/treatments).
+3. **Withdrawal Rule:** Once your veterinarian logs a prescription, the system automatically computes the exact **Safe Clearance Date** and prevents harvesting until that statutory date.
+
+*If you tell me your specific Animal Tag ID, I will check the live records for you!*`,
+        modelUsed: "AgriGuard Domain Synthesizer (Local)",
+        source: "local"
+      });
+    }
+
+    // Fallback to rich deterministic domain response
     const localReply = generateLocalDomainResponse(message, role);
     return res.json({
       reply: localReply,

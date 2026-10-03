@@ -141,7 +141,7 @@ async function createCertificate({ farmerId, validFrom, validUntil, notes }) {
 /**
  * Step 1: Approve or Reject Certificate (FSSAI Regulator only)
  */
-async function approveCertificate({ id, regulatorUser, action, reason }) {
+async function approveCertificate({ id, regulatorUser, action, reason, validFrom, validUntil }) {
   const cert = await prisma.mRLCertificate.findUnique({
     where: { id },
     include: { farmer: { include: { user: true } } }
@@ -159,16 +159,37 @@ async function approveCertificate({ id, regulatorUser, action, reason }) {
   const newApprovalStatus = action === "APPROVE" ? "APPROVED" : "REJECTED";
   const newMrlStatus = action === "APPROVE" ? cert.mrlStatus : "NOT_SET";
 
+  const now = new Date();
+  const updateData = {
+    approvalStatus: newApprovalStatus,
+    mrlStatus: newMrlStatus,
+    approvedBy: regulatorUser.fullName || regulatorUser.email || "FSSAI Central Regulator",
+    approvedById: regulatorUser.id,
+    approvalTimestamp: now,
+    rejectionReason: action === "REJECT" ? reason || "Regulatory non-compliance" : null
+  };
+
+  // If approving, make sure the validity period is active for the weekly cycle!
+  // If validUntil is missing or in the past (expired), or if dates provided, refresh validity window:
+  if (action === "APPROVE") {
+    let fromDate = validFrom ? new Date(validFrom) : (cert.validFrom && new Date(cert.validUntil) > now ? cert.validFrom : now);
+    let untilDate = validUntil ? new Date(validUntil) : null;
+
+    if (!untilDate) {
+      if (!cert.validUntil || new Date(cert.validUntil) <= now) {
+        untilDate = new Date(fromDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      } else {
+        untilDate = cert.validUntil;
+      }
+    }
+
+    updateData.validFrom = fromDate;
+    updateData.validUntil = untilDate;
+  }
+
   const updatedCert = await prisma.mRLCertificate.update({
     where: { id },
-    data: {
-      approvalStatus: newApprovalStatus,
-      mrlStatus: newMrlStatus,
-      approvedBy: regulatorUser.fullName || regulatorUser.email || "FSSAI Central Regulator",
-      approvedById: regulatorUser.id,
-      approvalTimestamp: new Date(),
-      rejectionReason: action === "REJECT" ? reason || "Regulatory non-compliance" : null
-    },
+    data: updateData,
     include: {
       farmer: {
         include: { user: { select: { email: true } }, farms: true }

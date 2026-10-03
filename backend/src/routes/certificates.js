@@ -2,6 +2,7 @@ const express = require("express");
 const { authenticate, authorize } = require("../middleware/auth");
 const { PrismaClient } = require("@prisma/client");
 const certificateService = require("../services/certificateService");
+const { sendCertificationUpdateEmail } = require("../services/emailService");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -124,7 +125,7 @@ router.post("/initiate", authenticate, authorize("REGULATOR", "FARMER"), async (
 router.patch("/:id/approve", authenticate, authorize("REGULATOR"), async (req, res) => {
   try {
     const { id } = req.params;
-    const { action, reason } = req.body;
+    const { action, reason, validFrom, validUntil } = req.body;
 
     if (!action || (action !== "APPROVE" && action !== "REJECT")) {
       return res.status(400).json({ error: "Action must be 'APPROVE' or 'REJECT'" });
@@ -145,7 +146,9 @@ router.patch("/:id/approve", authenticate, authorize("REGULATOR"), async (req, r
       id,
       regulatorUser,
       action,
-      reason
+      reason,
+      validFrom,
+      validUntil
     });
 
     res.json(cert);
@@ -186,6 +189,23 @@ router.patch("/:id/status", authenticate, authorize("REGULATOR"), async (req, re
       validUntil,
       notes
     });
+
+    // Trigger Email notification to Farmer (non-blocking, non-destructive)
+    try {
+      if (cert.farmer) {
+        await sendCertificationUpdateEmail({
+          farmerName: cert.farmer.fullName,
+          farmerEmail: cert.farmer.notificationEmail,
+          mrlStatus: cert.mrlStatus,
+          validFrom: cert.validFrom,
+          validUntil: cert.validUntil,
+          certificateId: cert.certificateId,
+          farmerId: cert.farmer.id
+        });
+      }
+    } catch (mailErr) {
+      console.error("[WARN] Failed to trigger certification update email:", mailErr.message);
+    }
 
     res.json(cert);
   } catch (error) {

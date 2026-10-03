@@ -2,6 +2,7 @@ const express = require("express");
 const { PrismaClient } = require("@prisma/client");
 const { authenticate, authorize } = require("../middleware/auth");
 const { analyzeMRL } = require("../services/mrlEngine");
+const { sendMRLResultEmail } = require("../services/emailService");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -10,7 +11,6 @@ const prisma = new PrismaClient();
 router.get("/", async (req, res) => {
   try {
     const tests = await prisma.testResult.findMany({
-      where: { testDate: { gte: new Date("2026-09-01T00:00:00.000Z") } },
       include: {
         tag: { include: { animal: { include: { farm: true } }, batch: { include: { farm: true } } } },
         tester: true,
@@ -38,7 +38,10 @@ router.post("/", authenticate, authorize("FARM_TESTER"), async (req, res) => {
 
     const tag = await prisma.animalTag.findUnique({ 
       where: { tag: tagId },
-      include: { animal: { include: { farm: true } }, batch: { include: { farm: true } } }
+      include: { 
+        animal: { include: { farm: { include: { farmer: { include: { user: true } } } } } }, 
+        batch: { include: { farm: { include: { farmer: { include: { user: true } } } } } } 
+      }
     });
     if (!tag) return res.status(404).json({ error: "Animal tag not found" });
 
@@ -107,7 +110,26 @@ router.post("/", authenticate, authorize("FARM_TESTER"), async (req, res) => {
       }
     });
 
-    res.json({ testResult, aiReport, blockchainRecord });
+    // 6. Trigger Email notification to Farmer (non-blocking, non-destructive)
+    let emailResult = null;
+    try {
+      const farmerObj = tag.animal?.farm?.farmer || tag.batch?.farm?.farmer;
+      if (farmerObj) {
+        emailResult = await sendMRLResultEmail({
+          farmerName: farmerObj.fullName,
+          farmerEmail: farmerObj.notificationEmail,
+          animalOrBatchId: tagId,
+          result: `${amountDetected} ${unit} (${substanceDetected})`,
+          mrlStatus: analysis.status,
+          testDate: testResult.testDate,
+          farmerId: farmerObj.id
+        });
+      }
+    } catch (mailErr) {
+      console.error("[WARN] Failed to trigger MRL result email:", mailErr.message);
+    }
+
+    res.json({ testResult, aiReport, blockchainRecord, emailNotification: emailResult?.notification });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });

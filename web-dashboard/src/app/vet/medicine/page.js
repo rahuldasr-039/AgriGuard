@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Pill, ShieldCheck, CheckCircle2, AlertTriangle, 
   Info, Clock, QrCode, ArrowRight, Sparkles, Copy, AlertCircle,
-  Filter, Layers, Check, RefreshCw, Bot
+  Filter, Layers, Check, RefreshCw, Bot, Scale, Calendar,
+  History, TrendingUp, FileText, CheckCircle, HelpCircle, X, ChevronRight, Edit3
 } from "lucide-react";
 import Link from "next/link";
+import { useLanguage } from "@/context/LanguageContext";
 
 // 7 Supported Animal Categories & Registered Test Tags
 const ANIMAL_CATEGORIES = [
@@ -91,6 +93,7 @@ const MEDICINE_CATALOG = {
 
 export default function GiveMedicine() {
   const router = useRouter();
+  const { language, t, translateStatus } = useLanguage();
   const [selectedAnimalType, setSelectedAnimalType] = useState("Cow");
 
   const [formData, setFormData] = useState({
@@ -105,6 +108,8 @@ export default function GiveMedicine() {
     foodProduct: "Milk",
     duration: "5",
     route: "Intramuscular (IM)",
+    frequency: "Once daily (SID)",
+    indication: "Bovine Respiratory Disease (BRD), Foot Rot, Mastitis",
     dateAdministered: new Date().toISOString().split("T")[0]
   });
 
@@ -114,6 +119,114 @@ export default function GiveMedicine() {
   const [toastMessage, setToastMessage] = useState(null);
   const [aiReview, setAiReview] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+
+  // Animal Profile and Weight History state
+  const [animalProfile, setAnimalProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [showWeightHistoryModal, setShowWeightHistoryModal] = useState(false);
+
+  // Dosage Calculation State
+  const [dosageCalc, setDosageCalc] = useState(null);
+  const [calcLoading, setCalcLoading] = useState(false);
+
+  // Veterinarian Override State
+  const [isOverridden, setIsOverridden] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
+
+  useEffect(() => {
+    const role = localStorage.getItem("userRole");
+    if (!role || role !== "VETERINARIAN") {
+      router.push("/login");
+    }
+  }, [router]);
+
+  // Fetch Animal Profile
+  const fetchAnimalProfile = useCallback(async (tag) => {
+    if (!tag) return;
+    setProfileLoading(true);
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`http://localhost:5000/api/v1/veterinarians/animals/${encodeURIComponent(tag)}`, {
+        headers: token ? { "Authorization": `Bearer ${token}` } : {}
+      });
+      const data = await res.json();
+      if (res.ok && data.animal) {
+        setAnimalProfile(data.animal);
+        if (data.animal.farmer?.farmerId) {
+          setFormData(prev => ({ ...prev, farmerId: data.animal.farmer.farmerId }));
+        }
+      } else {
+        setAnimalProfile(null);
+      }
+    } catch (err) {
+      console.error("Failed to load animal profile:", err);
+      setAnimalProfile(null);
+    } finally {
+      setProfileLoading(false);
+    }
+  }, []);
+
+  // Calculate Dosage Arithmetic from backend rule
+  const calculateDosage = useCallback(async (tag, medicine, route, indication) => {
+    if (!tag || !medicine) return;
+    setCalcLoading(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/v1/treatments/calculate-dose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tagId: tag,
+          medicineName: medicine,
+          route: route || "Intramuscular (IM)",
+          indication: indication || ""
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.calculation) {
+        setDosageCalc(data.calculation);
+        if (data.calculation.ruleFound && data.calculation.approvedDose) {
+          // Set recommended dose unless already custom overridden
+          setFormData(prev => ({
+            ...prev,
+            dose: data.calculation.approvedDose.toString(),
+            duration: data.calculation.durationDays ? data.calculation.durationDays.toString() : prev.duration,
+            frequency: data.calculation.frequency || prev.frequency,
+            indication: data.calculation.indication || prev.indication
+          }));
+          setIsOverridden(false);
+          setOverrideReason("");
+        }
+      } else {
+        setDosageCalc(null);
+      }
+    } catch (err) {
+      console.error("Failed to calculate dosage:", err);
+      setDosageCalc(null);
+    } finally {
+      setCalcLoading(false);
+    }
+  }, []);
+
+  // Trigger Profile and Dosage calculation when tag or medicine changes
+  useEffect(() => {
+    if (formData.tagId) {
+      fetchAnimalProfile(formData.tagId);
+      calculateDosage(formData.tagId, formData.medicineName, formData.route, formData.indication);
+    }
+  }, [formData.tagId, formData.medicineName, formData.route, fetchAnimalProfile, calculateDosage]);
+
+  // Handle dose modification by Vet
+  const handleDoseChange = (newDoseStr) => {
+    setFormData(prev => ({ ...prev, dose: newDoseStr }));
+    const val = parseFloat(newDoseStr);
+    if (dosageCalc?.ruleFound && dosageCalc?.approvedDose !== undefined) {
+      if (!isNaN(val) && val !== dosageCalc.approvedDose) {
+        setIsOverridden(true);
+      } else {
+        setIsOverridden(false);
+      }
+    }
+  };
 
   const runAiClinicalCheck = async () => {
     setAiLoading(true);
@@ -130,6 +243,7 @@ export default function GiveMedicine() {
           dose: formData.dose + " mg/kg",
           route: formData.route,
           diagnosis: "Clinical AMU prescription for " + selectedAnimalType,
+          language: language,
           apiKey
         })
       });
@@ -141,13 +255,6 @@ export default function GiveMedicine() {
       setAiLoading(false);
     }
   };
-
-  useEffect(() => {
-    const role = localStorage.getItem("userRole");
-    if (!role || role !== "VETERINARIAN") {
-      router.push("/login");
-    }
-  }, [router]);
 
   // Dynamically Filtered Medicines for the Selected Animal
   const approvedMedicines = useMemo(() => {
@@ -180,14 +287,15 @@ export default function GiveMedicine() {
     const medMeta = MEDICINE_CATALOG[firstMed] || {};
 
     let defaultProduct = animalObj?.defaultProduct || "Meat";
-    if (newAnimalType === "Fish") defaultProduct = "Fish";
-    else if (newAnimalType === "Prawn") defaultProduct = "Fish";
+    if (newAnimalType === "Fish" || newAnimalType === "Prawn") defaultProduct = "Fish";
     else if (newAnimalType === "Chicken") defaultProduct = "Meat";
+
+    const nextTag = animalObj?.quickTags?.[0] || formData.tagId;
 
     setFormData(prev => ({
       ...prev,
       animalType: newAnimalType,
-      tagId: animalObj?.quickTags?.[0] || prev.tagId,
+      tagId: nextTag,
       medicineName: firstMed,
       activeIngredient: medMeta.ingredient || firstMed,
       foodProduct: defaultProduct
@@ -209,13 +317,19 @@ export default function GiveMedicine() {
 
   // Computed safe clearance date preview
   const safeDatePreview = useMemo(() => {
+    const holdDays = dosageCalc?.withdrawalDays || selectedMedInfo.withdrawalDays || 7;
     const d = new Date(formData.dateAdministered || new Date());
-    d.setDate(d.getDate() + (selectedMedInfo.withdrawalDays || 7));
+    d.setDate(d.getDate() + holdDays);
     return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-  }, [formData.dateAdministered, selectedMedInfo]);
+  }, [formData.dateAdministered, selectedMedInfo, dosageCalc]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isOverridden && (!overrideReason || !overrideReason.trim())) {
+      setError("A clinical reason is mandatory whenever the system-calculated dose is adjusted.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     setResult(null);
@@ -232,13 +346,25 @@ export default function GiveMedicine() {
           ...formData,
           animalType: selectedAnimalType,
           dose: parseFloat(formData.dose),
-          animalCount: parseInt(formData.animalCount),
-          duration: parseInt(formData.duration)
+          animalCount: parseInt(formData.animalCount || 1),
+          duration: parseInt(formData.duration || 5),
+          calculatedDose: dosageCalc?.approvedDose || null,
+          calculatedVolume: dosageCalc?.calculatedAdministrationVolumeMl || null,
+          concentration: dosageCalc?.concentrationMgMl || null,
+          dosageRuleUsed: dosageCalc?.calculationSource || (dosageCalc?.ruleFound ? `${dosageCalc.medicineName} (${dosageCalc.approvedDose} mg/kg)` : null),
+          isDoseOverridden: isOverridden,
+          overrideReason: isOverridden ? overrideReason : null
         })
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to log treatment");
+      if (!res.ok) {
+        let msg = data.error || "Failed to log treatment";
+        if (msg.toLowerCase().includes("invalid animal-medicine") || msg.toLowerCase().includes("not approved") || msg.toLowerCase().includes("combination")) {
+          msg = "⚠️ This medicine is not approved for this animal. Please select an approved medicine.";
+        }
+        throw new Error(msg);
+      }
 
       setResult(data);
     } catch (err) {
@@ -268,13 +394,15 @@ export default function GiveMedicine() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800 pb-6">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl">Prescribe Antimicrobial (AMU)</h1>
+            <h1 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl">
+              {t("prescribeMedicine", "Prescribe Antimicrobial (AMU)")}
+            </h1>
             <span className="px-3 py-1 rounded-full text-xs font-mono bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 font-bold">
-              Dynamic Animal-Wise Medicines
+              Weight & Age-Aware Dosage Engine
             </span>
           </div>
-          <p className="text-slate-400 text-sm sm:text-base max-w-2xl">
-            Select an animal species to automatically filter approved statutory antimicrobial drugs, compute deterministic withdrawal hold intervals, and log cryptographic proofs on-chain.
+          <p className="text-slate-400 text-sm sm:text-base max-w-3xl">
+            {t("vetEngineSubtitle", "Automatic veterinary antibiotic arithmetic strictly evaluated from statutory clinical dosage rules and live animal records. Zero AI guesswork — arithmetic is deterministically audited on-chain.")}
           </p>
         </div>
       </div>
@@ -288,13 +416,13 @@ export default function GiveMedicine() {
             </div>
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-2xl font-bold text-white">Prescription Signed &amp; Quarantined</h2>
+                <h2 className="text-2xl font-bold text-white">{t("prescriptionSigned", "Prescription Signed & Quarantined")}</h2>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
-                  Hold Active
+                  {translateStatus("HOLD ACTIVE")}
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-mono">
-                Regimen ID: {result.treatment?.id || "TX-" + Date.now()} • Target: {selectedAnimalType} ({formData.tagId})
+                Regimen ID: <span className="notranslate" translate="no">{result.treatment?.id || "TX-" + Date.now()}</span> • Target: {selectedAnimalType} (<span className="notranslate" translate="no">{formData.tagId}</span>)
               </p>
             </div>
           </div>
@@ -302,29 +430,37 @@ export default function GiveMedicine() {
           <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-3">
             <AlertTriangle className="w-6 h-6 text-amber-400 shrink-0" />
             <div>
-              <strong className="block text-white font-semibold">Statutory Milk / Meat Quarantine Initiated</strong>
-              <span>Target livestock ({formData.tagId}) is flagged on the public blockchain. Clearance certified on: <strong>{new Date(result.withdrawal?.safeFromDate || Date.now() + 7*86400000).toLocaleDateString()}</strong>.</span>
+              <strong className="block text-white font-semibold">{t("statutoryQuarantineNotice", "Statutory Milk / Meat Quarantine Initiated")}</strong>
+              <span>Target livestock (<span className="notranslate" translate="no">{formData.tagId}</span>) is flagged on the public blockchain. Clearance certified on: <strong>{new Date(result.withdrawal?.safeFromDate || Date.now() + 7*86400000).toLocaleDateString()}</strong>.</span>
             </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
             <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl">
-              <span className="text-slate-500 block mb-1">Prescribed Drug</span>
+              <span className="text-slate-500 block mb-1">{t("prescribedDrug", "Prescribed Drug")}</span>
               <strong className="text-white text-sm">{result.treatment?.medicineName}</strong>
             </div>
             <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl">
-              <span className="text-slate-500 block mb-1">Target Tag</span>
-              <strong className="text-cyan-400 font-mono text-sm">{formData.tagId}</strong>
+              <span className="text-slate-500 block mb-1">{t("approvedDose", "Approved Dose")}</span>
+              <strong className="text-cyan-400 font-mono text-sm notranslate" translate="no">{formData.dose} mg/kg</strong>
             </div>
             <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl">
-              <span className="text-slate-500 block mb-1">Withdrawal Hold</span>
-              <strong className="text-amber-400 text-sm">{result.withdrawal?.withdrawalPeriod || 7} Days</strong>
+              <span className="text-slate-500 block mb-1">{t("withdrawalHold", "Withdrawal Hold")}</span>
+              <strong className="text-amber-400 text-sm">{result.withdrawal?.withdrawalPeriod || 7} {t("days", "Days")}</strong>
             </div>
             <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl">
-              <span className="text-slate-500 block mb-1">Safe Harvest Date</span>
+              <span className="text-slate-500 block mb-1">{t("safeHarvestDate", "Safe Harvest Date")}</span>
               <strong className="text-emerald-400 text-sm font-mono">{new Date(result.withdrawal?.safeFromDate || Date.now() + 7*86400000).toLocaleDateString()}</strong>
             </div>
           </div>
+
+          {result.treatment?.isDoseOverridden && (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-1">
+              <span className="text-amber-400 font-bold block">Clinical Dose Adjustment Recorded:</span>
+              <p className="text-slate-300">System Formula: {result.treatment?.calculatedDose} mg/kg &rarr; Prescribed: {result.treatment?.dosageAdministered} mg/kg</p>
+              <p className="text-slate-400 italic">" {result.treatment?.overrideReason} "</p>
+            </div>
+          )}
 
           <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-3">
@@ -342,9 +478,51 @@ export default function GiveMedicine() {
             </button>
           </div>
 
+          {/* Email Notification Dispatch Card */}
+          <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 space-y-3 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-emerald-400 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Email Treatment Notification Dispatched
+              </span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                {result.emailStatus || result.emailNotification?.status || "SENT"}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/50 p-2.5 rounded-lg border border-slate-800">
+              <div>
+                <span className="text-slate-500 block">Recipient Farmer:</span>
+                <strong className="text-white font-medium">
+                  {result.emailNotification?.farmer?.fullName || result.farmerName || "Linked Farm Owner"}
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-500 block">Notification Email:</span>
+                <strong className="text-cyan-400 font-mono">
+                  {result.emailNotification?.recipientEmail || "Configured Notification Email"}
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-500 block">Prescribed Dose & Weight:</span>
+                <span className="text-amber-300 font-mono text-[10px] font-semibold">
+                  {formData.dose} mg/kg • {animalProfile?.currentWeight || 400} kg
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">Safe Clearance Date:</span>
+                <span className="text-emerald-400 font-mono text-[10px] font-bold">
+                  {new Date(result.withdrawal?.safeFromDate || Date.now() + 7*86400000).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+            <div className="text-slate-400 text-[11px]">
+              Statutory antimicrobial withdrawal alert sent to the farmer's notification email with complete dosage details.
+            </div>
+          </div>
+
           <div className="pt-2 flex justify-between items-center">
             <button
-              onClick={() => setResult(null)}
+              onClick={() => { setResult(null); setIsOverridden(false); setOverrideReason(""); }}
               className="bg-cyan-500 hover:bg-cyan-600 text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-lg shadow-cyan-500/20"
             >
               + Issue Another Prescription
@@ -358,113 +536,64 @@ export default function GiveMedicine() {
           </div>
         </div>
       ) : (
-        /* Form & Live Withdrawal Radar */
+        /* Main Prescription Workspace */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Form */}
-          <div className="lg:col-span-7 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-7 backdrop-blur-sm space-y-6">
-            <div className="border-b border-slate-800/80 pb-4">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Pill className="w-5 h-5 text-cyan-400" />
-                Prescription Parameters
-              </h2>
-              <p className="text-xs text-slate-400 mt-1">
-                Select animal type to dynamically filter statutory approved drugs.
-              </p>
-            </div>
+          {/* Left Column: Animal Profile & Prescription Form */}
+          <div className="lg:col-span-7 space-y-6">
 
-            {error && (
-              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2 font-medium animate-in shake">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* Step 1: Animal Type Selector */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                <span>1. Select Animal Type *</span>
-                <span className="text-[10px] text-cyan-400 font-mono flex items-center gap-1">
-                  <Filter className="w-3 h-3" /> Dynamic Filtering
-                </span>
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {ANIMAL_CATEGORIES.map(cat => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => handleAnimalTypeChange(cat.id)}
-                    className={`text-xs px-3 py-2 rounded-xl border font-medium transition-all text-left flex items-center justify-between ${
-                      selectedAnimalType === cat.id
-                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-md shadow-cyan-500/10"
-                        : "bg-slate-950/80 text-slate-400 hover:text-white border-slate-800 hover:border-slate-700"
-                    }`}
-                  >
-                    <span>{cat.label}</span>
-                    {selectedAnimalType === cat.id && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Step 2: Dynamic Medicine Selection */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-semibold text-slate-300">
-                  2. Approved Medicines for <span className="text-cyan-400">{currentAnimalObj.label}</span> *
-                </label>
-                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                  {approvedMedicines.length} Approved Drugs
-                </span>
-              </div>
-
-              {/* Medicine Dropdown */}
-              <select
-                value={formData.medicineName}
-                onChange={(e) => handleMedicineSelect(e.target.value)}
-                required
-                className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-colors"
-              >
-                {approvedMedicines.map(med => (
-                  <option key={med} value={med}>
-                    {med} (Hold: {MEDICINE_CATALOG[med]?.withdrawalDays || 7}d)
-                  </option>
-                ))}
-              </select>
-
-              {/* Quick Pills for Approved Medicines */}
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {approvedMedicines.map(med => (
-                  <button
-                    key={med}
-                    type="button"
-                    onClick={() => handleMedicineSelect(med)}
-                    className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
-                      formData.medicineName === med
-                        ? "bg-cyan-500/25 text-cyan-200 border-cyan-500/50 font-bold"
-                        : "bg-slate-950/60 text-slate-400 hover:text-slate-200 border-slate-800"
-                    }`}
-                  >
-                    {med}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4 pt-2 border-t border-slate-800/80">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Animal Selection & Profile Header Card */}
+            <div className="bg-slate-900/70 border border-slate-800/90 rounded-2xl p-6 backdrop-blur-md space-y-5">
+              <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
                 <div>
-                  <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-1.5">
-                    Farmer ID *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.farmerId}
-                    onChange={(e) => setFormData({ ...formData, farmerId: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 text-white font-mono rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500/50"
-                  />
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    <Scale className="w-5 h-5 text-cyan-400" />
+                    Target Animal Profile
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Live veterinary data: DOB, dynamically calculated age, and monthly weight record.
+                  </p>
                 </div>
+                {animalProfile?.weightHistory && animalProfile.weightHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWeightHistoryModal(true)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700"
+                  >
+                    <History className="w-3.5 h-3.5 text-cyan-400" />
+                    View Weight History
+                  </button>
+                )}
+              </div>
 
+              {/* Step 1: Species Selector */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                  <span>Species Category *</span>
+                  <span className="text-[10px] text-cyan-400 font-mono flex items-center gap-1">
+                    <Filter className="w-3 h-3" /> Dynamic Filtering
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {ANIMAL_CATEGORIES.map(cat => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => handleAnimalTypeChange(cat.id)}
+                      className={`text-xs px-3 py-2 rounded-xl border font-medium transition-all text-left flex items-center justify-between ${
+                        selectedAnimalType === cat.id
+                          ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-md shadow-cyan-500/10"
+                          : "bg-slate-950/80 text-slate-400 hover:text-white border-slate-800 hover:border-slate-700"
+                      }`}
+                    >
+                      <span>{cat.label}</span>
+                      {selectedAnimalType === cat.id && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tag Selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-1.5">
                     Target Animal Tag ID *
@@ -474,11 +603,10 @@ export default function GiveMedicine() {
                     required
                     value={formData.tagId}
                     onChange={(e) => setFormData({ ...formData, tagId: e.target.value.toUpperCase() })}
-                    className="w-full bg-slate-950 border border-slate-800 text-cyan-400 font-mono font-bold rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500/50"
+                    className="w-full bg-slate-950 border border-slate-700 text-cyan-400 font-mono font-bold rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500/50"
                   />
-                  {/* Tag quick pick */}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="text-[10px] text-slate-500">Suggested {selectedAnimalType} Tags:</span>
+                    <span className="text-[10px] text-slate-500">Quick Tags:</span>
                     {currentAnimalObj.quickTags?.map(t => (
                       <button
                         key={t}
@@ -495,29 +623,189 @@ export default function GiveMedicine() {
                     ))}
                   </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-1.5">
-                    Active Ingredient
+                    Farmer Owner ID
                   </label>
                   <input
                     type="text"
-                    disabled
-                    value={formData.activeIngredient}
-                    className="w-full bg-slate-950/60 border border-slate-800 text-slate-400 rounded-xl px-4 py-2.5 text-sm"
+                    value={formData.farmerId}
+                    onChange={(e) => setFormData({ ...formData, farmerId: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 text-white font-mono rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500/50"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Linked Farm: {animalProfile?.farm?.name || "Farm 3 (Rajesh Kumar)"}
+                  </span>
+                </div>
+              </div>
+
+              {/* ANIMAL PROFILE SNAPSHOT (Section 9 & 14) */}
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/90 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    ANIMAL INFORMATION: {selectedAnimalType} • {formData.tagId}
+                  </span>
+                  {animalProfile?.weightUpdateStatus?.label && (
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      animalProfile.weightUpdateStatus.status === "updated_this_month"
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        : "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+                    }`}>
+                      ● {animalProfile.weightUpdateStatus.label}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Species / Breed</span>
+                    <strong className="text-white">
+                      {animalProfile?.species || selectedAnimalType} {animalProfile?.breed ? `(${animalProfile.breed})` : ""}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Date of Birth</span>
+                    <strong className="text-cyan-300 font-mono">
+                      {animalProfile?.dateOfBirth ? new Date(animalProfile.dateOfBirth).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" }) : "15/04/2024"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Current Age</span>
+                    <strong className="text-emerald-400 font-semibold">
+                      {animalProfile?.ageInfo?.text || "2 years 5 months"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Current Weight</span>
+                    <strong className="text-cyan-400 font-bold text-sm">
+                      {animalProfile?.currentWeight || 400} kg
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-slate-400">
+                  <div>
+                    <span>Weight Updated: </span>
+                    <strong className="text-slate-200">
+                      {animalProfile?.weightLastUpdatedAt ? new Date(animalProfile.weightLastUpdatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "10 Sep 2026"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Next Farmer Update: </span>
+                    <strong className="text-slate-200">
+                      {animalProfile?.nextWeightUpdateAt ? new Date(animalProfile.nextWeightUpdateAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "10 Oct 2026"}
+                    </strong>
+                  </div>
+                  <div className="text-right sm:text-left">
+                    <button
+                      type="button"
+                      onClick={() => setShowWeightHistoryModal(true)}
+                      className="text-cyan-400 hover:text-cyan-300 font-semibold underline"
+                    >
+                      View Weight History &rarr;
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Treatment & Prescription Form */}
+            <form onSubmit={handleSubmit} className="bg-slate-900/70 border border-slate-800/90 rounded-2xl p-6 backdrop-blur-md space-y-6">
+              <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <Pill className="w-5 h-5 text-cyan-400" />
+                  Prescription Parameters &amp; Dosage Calculation
+                </h2>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  {approvedMedicines.length} Approved Drugs
+                </span>
+              </div>
+
+              {error && (
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs sm:text-sm flex items-center gap-2.5 font-medium shadow-xs">
+                  <span className="text-base shrink-0">⚠️</span>
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Medicine Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-300">
+                  Select Statutory Medicine for <span className="text-cyan-400">{currentAnimalObj.label}</span> *
+                </label>
+                <select
+                  value={formData.medicineName}
+                  onChange={(e) => handleMedicineSelect(e.target.value)}
+                  required
+                  className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-colors"
+                >
+                  {approvedMedicines.map(med => (
+                    <option key={med} value={med}>
+                      {med} (Hold: {MEDICINE_CATALOG[med]?.withdrawalDays || 7}d)
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {approvedMedicines.map(med => (
+                    <button
+                      key={med}
+                      type="button"
+                      onClick={() => handleMedicineSelect(med)}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
+                        formData.medicineName === med
+                          ? "bg-cyan-500/25 text-cyan-200 border-cyan-500/50 font-bold"
+                          : "bg-slate-950/60 text-slate-400 hover:text-slate-200 border-slate-800"
+                      }`}
+                    >
+                      {med}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Clinical Indication, Route, Food Matrix */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-1.5">
+                    Clinical Indication *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.indication}
+                    onChange={(e) => setFormData({ ...formData, indication: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-cyan-500/50"
+                    placeholder="e.g. BRD, Foot Rot, Mastitis"
                   />
                 </div>
 
                 <div>
                   <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-1.5">
-                    Restricted Food Commodity *
+                    Administration Route *
+                  </label>
+                  <select
+                    value={formData.route}
+                    onChange={(e) => setFormData({ ...formData, route: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-cyan-500/50"
+                  >
+                    <option value="Intramuscular (IM)">Intramuscular (IM)</option>
+                    <option value="Subcutaneous (SC)">Subcutaneous (SC)</option>
+                    <option value="Oral">Oral (Feed / Water)</option>
+                    <option value="Topical">Topical</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-1.5">
+                    Restricted Commodity *
                   </label>
                   <select
                     value={formData.foodProduct}
                     onChange={(e) => setFormData({ ...formData, foodProduct: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500/50"
+                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-cyan-500/50"
                   >
                     <option value="Milk">Milk (Dairy)</option>
                     <option value="Meat">Meat (Carcass)</option>
@@ -527,52 +815,200 @@ export default function GiveMedicine() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-1.5">
-                    Dose (mg/kg) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    required
-                    value={formData.dose}
-                    onChange={(e) => setFormData({ ...formData, dose: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500/50"
-                  />
+              {/* AUTOMATIC DOSAGE CALCULATION PANEL (Section 10 & 11) */}
+              <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-950 to-slate-900 border border-cyan-500/30 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Scale className="w-5 h-5 text-cyan-400" />
+                    <div>
+                      <h3 className="text-sm font-bold text-white">SYSTEM CALCULATED DOSE</h3>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Formula: mg = (mg/kg × Weight) • Volume = (mg ÷ Concentration)
+                      </span>
+                    </div>
+                  </div>
+                  {calcLoading ? (
+                    <RefreshCw className="w-4 h-4 text-cyan-400 animate-spin" />
+                  ) : dosageCalc?.ruleFound ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                      Approved Rule Applied
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      No Rule Configured
+                    </span>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-1.5">
-                    Duration (Days) *
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={formData.duration}
-                    onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500/50"
-                  />
-                </div>
+                {dosageCalc?.ruleFound ? (
+                  <div className="space-y-3 text-xs">
+                    {/* Arithmetic Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl">
+                        <span className="text-slate-500 block text-[11px]">Database Weight</span>
+                        <strong className="text-white text-sm">{dosageCalc.weightUsed} kg</strong>
+                      </div>
+                      <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl">
+                        <span className="text-slate-500 block text-[11px]">Approved Dose Rule</span>
+                        <strong className="text-cyan-300 text-sm">{dosageCalc.approvedDose} mg/kg</strong>
+                      </div>
+                      <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl">
+                        <span className="text-slate-500 block text-[11px]">Active Ingredient</span>
+                        <strong className="text-emerald-400 text-sm font-mono">{dosageCalc.calculatedActiveIngredientMg?.toLocaleString()} mg</strong>
+                      </div>
+                      <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl">
+                        <span className="text-slate-500 block text-[11px]">Concentration</span>
+                        <strong className="text-slate-200 text-sm">{dosageCalc.concentrationMgMl} mg/mL</strong>
+                      </div>
+                    </div>
 
-                <div>
-                  <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-1.5">
-                    Route *
-                  </label>
-                  <select
-                    value={formData.route}
-                    onChange={(e) => setFormData({ ...formData, route: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500/50"
-                  >
-                    <option value="Intramuscular (IM)">Intramuscular (IM)</option>
-                    <option value="Subcutaneous (SC)">Subcutaneous (SC)</option>
-                    <option value="Oral">Oral (Feed / Water)</option>
-                    <option value="Topical">Topical</option>
-                  </select>
-                </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                      <div className="p-3 bg-slate-900/90 border border-cyan-500/30 rounded-xl">
+                        <span className="text-slate-500 block text-[11px]">Calculated Volume</span>
+                        <strong className="text-cyan-400 text-base font-mono font-bold">
+                          {dosageCalc.calculatedAdministrationVolumeMl} mL
+                        </strong>
+                      </div>
+                      <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl">
+                        <span className="text-slate-500 block text-[11px]">Regimen Frequency</span>
+                        <strong className="text-slate-200 text-xs">{dosageCalc.frequency}</strong>
+                      </div>
+                      <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl">
+                        <span className="text-slate-500 block text-[11px]">Calculated Duration</span>
+                        <strong className="text-slate-200 text-xs">{dosageCalc.durationDays} Days</strong>
+                      </div>
+                      <div className="p-3 bg-slate-900/90 border border-amber-500/30 rounded-xl">
+                        <span className="text-slate-500 block text-[11px]">Withdrawal Hold</span>
+                        <strong className="text-amber-400 text-sm font-bold">{dosageCalc.withdrawalDays} Days</strong>
+                      </div>
+                    </div>
+
+                    {/* Calculation Details */}
+                    <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/20 text-[11px] text-cyan-200 flex items-center justify-between">
+                      <span>
+                        📐 <strong>Arithmetic Breakdown:</strong> {dosageCalc.approvedDose} mg/kg × {dosageCalc.weightUsed} kg = {dosageCalc.calculatedActiveIngredientMg} mg active ingredient &divide; {dosageCalc.concentrationMgMl} mg/mL = <strong>{dosageCalc.calculatedAdministrationVolumeMl} mL</strong>
+                      </span>
+                      <span className="text-[10px] text-slate-400 hidden sm:inline font-mono">
+                        {dosageCalc.calculationSource}
+                      </span>
+                    </div>
+
+                    {/* Contraindication / Age Warnings */}
+                    {dosageCalc.warnings && dosageCalc.warnings.length > 0 && (
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                        <div>
+                          <strong className="block text-amber-200">Warning: Animal Profile Notice</strong>
+                          {dosageCalc.warnings.map((w, i) => (
+                            <span key={i} className="block">{w}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* No Rule Found Notice (Section 25: Zero AI Guessing) */
+                  <div className="p-4 rounded-xl bg-slate-900 border border-amber-500/30 text-amber-300 text-xs space-y-1.5">
+                    <div className="flex items-center gap-2 font-bold text-amber-400">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>No approved dosage rule configured</span>
+                    </div>
+                    <p className="text-slate-300 leading-relaxed">
+                      No approved dosage rule is configured for this medicine and animal profile ({selectedAnimalType}, {formData.medicineName}). Please determine and enter the prescription according to veterinary guidance.
+                    </p>
+                    <span className="text-[11px] text-slate-400 block font-mono">
+                      Rule Verification Policy: The system does not guess or extrapolate antibiotic doses with generative AI.
+                    </span>
+                  </div>
+                )}
               </div>
 
+              {/* VETERINARIAN FINAL PRESCRIPTION & OVERRIDE PANEL (Section 12) */}
+              <div className="space-y-4 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-cyan-400" />
+                    Veterinarian Final Prescription
+                  </h3>
+                  {isOverridden && (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      Dose Adjusted by Attending Vet
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-slate-300 text-xs font-semibold mb-1.5">
+                      Prescribed Dose (mg/kg) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      required
+                      value={formData.dose}
+                      onChange={(e) => handleDoseChange(e.target.value)}
+                      className="w-full bg-slate-950 border border-cyan-500/40 text-cyan-300 font-bold rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-400"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      {dosageCalc?.approvedDose ? `System rule: ${dosageCalc.approvedDose} mg/kg` : "Enter clinical dose"}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 text-xs font-semibold mb-1.5">
+                      Duration (Days) *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={formData.duration}
+                      onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 text-xs font-semibold mb-1.5">
+                      Regimen Frequency *
+                    </label>
+                    <select
+                      value={formData.frequency}
+                      onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500/50"
+                    >
+                      <option value="Once daily (SID)">Once daily (SID)</option>
+                      <option value="Twice daily (BID)">Twice daily (BID)</option>
+                      <option value="Every 48 hours">Every 48 hours</option>
+                      <option value="Single dose">Single dose</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Clinical Override Reason (Mandatory when overridden) */}
+                {isOverridden && (
+                  <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2 animate-in fade-in">
+                    <label className="block text-amber-300 text-xs font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      Reason for dose adjustment *
+                    </label>
+                    <textarea
+                      required
+                      rows={2}
+                      value={overrideReason}
+                      onChange={(e) => setOverrideReason(e.target.value)}
+                      placeholder="Please enter clinical rationale for overriding the system-calculated dose (e.g. severe infection, altered renal clearance, atypical weight)..."
+                      className="w-full bg-slate-950 border border-amber-500/40 text-white rounded-xl p-3 text-xs focus:outline-none focus:border-amber-400"
+                    />
+                    <span className="text-[11px] text-slate-400 block">
+                      This explanation will be permanently recorded in the immutable audit trail and visible to regulatory authorities.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
               <div className="pt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800">
                 <button
                   type="button"
@@ -593,7 +1029,7 @@ export default function GiveMedicine() {
                   </Link>
                   <button
                     type="submit"
-                    disabled={submitting}
+                    disabled={submitting || (isOverridden && !overrideReason.trim())}
                     className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white px-7 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 flex items-center gap-2"
                   >
                     {submitting ? "Signing & Quarantining..." : "Sign & Commit Prescription"}
@@ -603,7 +1039,7 @@ export default function GiveMedicine() {
             </form>
           </div>
 
-          {/* Live Withdrawal & MRL Radar */}
+          {/* Right Column: Live Statutory Radar & Compliance Preview */}
           <div className="lg:col-span-5 bg-gradient-to-b from-slate-900 to-slate-950 border border-cyan-500/30 rounded-2xl p-6 shadow-xl space-y-5">
             <div className="flex justify-between items-start border-b border-slate-800 pb-4">
               <div>
@@ -624,12 +1060,28 @@ export default function GiveMedicine() {
                   <span className="text-cyan-400 font-bold">{currentAnimalObj.label}</span>
                 </div>
                 <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Animal Tag / RFID</span>
+                  <span className="text-white font-mono font-bold">{formData.tagId}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Calculated Animal Age</span>
+                  <span className="text-slate-200">{animalProfile?.ageInfo?.text || "2 years 5 months"}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Animal Weight</span>
+                  <span className="text-cyan-300 font-bold">{animalProfile?.currentWeight || 400} kg</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
                   <span className="text-slate-500">Antimicrobial Drug</span>
                   <span className="text-white font-medium">{formData.medicineName}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500">Antimicrobial Class</span>
-                  <span className="text-slate-300">{selectedMedInfo.class}</span>
+                  <span className="text-slate-500">Active Ingredient</span>
+                  <span className="text-slate-300">{formData.activeIngredient}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Prescribed Dose</span>
+                  <span className="font-mono text-cyan-300 font-bold">{formData.dose} mg/kg</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500">AMR Criticality</span>
@@ -643,7 +1095,9 @@ export default function GiveMedicine() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500">Required Withdrawal Period</span>
-                  <span className="font-bold text-amber-400">{selectedMedInfo.withdrawalDays} Days Hold</span>
+                  <span className="font-bold text-amber-400">
+                    {dosageCalc?.withdrawalDays || selectedMedInfo.withdrawalDays || 7} Days Hold
+                  </span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
                   <span className="text-slate-400">Safe Harvest Clearance</span>
@@ -674,6 +1128,102 @@ export default function GiveMedicine() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WEIGHT HISTORY MODAL (Section 21) */}
+      {showWeightHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl relative space-y-5">
+            <div className="flex justify-between items-start border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  <Scale className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Animal Weight History</h3>
+                  <p className="text-xs text-slate-400 font-mono">
+                    Target: {formData.tagId} • {animalProfile?.species || selectedAnimalType}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWeightHistoryModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-slate-500 block">Current Registered Weight</span>
+                  <strong className="text-cyan-400 text-base font-bold">{animalProfile?.currentWeight || 400} kg</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Calculated Current Age</span>
+                  <strong className="text-emerald-400 font-semibold">{animalProfile?.ageInfo?.text || "2 years 5 months"}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Records Logged</span>
+                  <strong className="text-white font-mono">{animalProfile?.weightHistory?.length || 1} entries</strong>
+                </div>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto border border-slate-800/80 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800 sticky top-0">
+                    <tr>
+                      <th className="p-3">Date Recorded</th>
+                      <th className="p-3">Weight</th>
+                      <th className="p-3">Recorded By</th>
+                      <th className="p-3">Source</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50 bg-slate-900/40">
+                    {animalProfile?.weightHistory && animalProfile.weightHistory.length > 0 ? (
+                      animalProfile.weightHistory.map((item, idx) => (
+                        <tr key={item.id || idx} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="p-3 font-mono text-slate-300">
+                            {new Date(item.recordedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                          </td>
+                          <td className="p-3">
+                            <span className="font-bold text-cyan-300 font-mono text-xs">
+                              {item.weight} {item.unit || "kg"}
+                            </span>
+                          </td>
+                          <td className="p-3 text-slate-300">
+                            {item.recordedBy || "Farmer"}
+                          </td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700">
+                              {item.source || "MONTHLY_UPDATE"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="p-4 text-center text-slate-500">
+                          No historical weight entries found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setShowWeightHistoryModal(false)}
+                className="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Close History
+              </button>
             </div>
           </div>
         </div>

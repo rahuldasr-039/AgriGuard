@@ -186,7 +186,6 @@ router.get('/traceability', async (req, res) => {
           }
         },
         treatments: {
-          where: { dateAdministered: { gte: new Date("2026-09-01T00:00:00.000Z") } },
           include: {
             vet: true,
             withdrawal: true,
@@ -195,14 +194,12 @@ router.get('/traceability', async (req, res) => {
           }
         },
         vaccinations: {
-          where: { dateOfInjection: { gte: new Date("2026-09-01T00:00:00.000Z") } },
           include: {
             vet: true,
             blockchainRecord: true
           }
         },
         productTests: {
-          where: { testDate: { gte: new Date("2026-09-01T00:00:00.000Z") } },
           include: {
             tester: true,
             blockchainRecord: true

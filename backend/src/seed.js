@@ -82,6 +82,7 @@ async function main() {
   console.log("Creating Farmers...");
   const farmers = [];
   for (let i = 1; i <= 5; i++) {
+    const mobileNum = i === 1 ? "8610528491" : (i === 2 ? "8606210984" : `876543210${i}`);
     farmers.push(await prisma.user.create({
       data: {
         email: `farmer${i}@example.com`,
@@ -90,8 +91,10 @@ async function main() {
         farmerProfile: {
           create: {
             farmerId: `FR1029${i}`,
-            fullName: `Farmer ${i}`,
-            mobileNumber: `876543210${i}`,
+            fullName: i === 1 ? "RAJESH" : `Farmer ${i}`,
+            mobileNumber: mobileNum,
+            notificationEmail: i === 1 ? "rajesh.notifications@gmail.com" : `farmer${i}.notifications@gmail.com`,
+            emailNotificationsEnabled: true,
             farmLocation: `Location ${i}, District`,
             fullAddress: `Address ${i}, State`,
             animalCategories: "Cow, Buffalo",
@@ -143,17 +146,49 @@ async function main() {
 
     // Individual animals (Cows/Goats)
     for (let j = 1; j <= 5; j++) {
+      const isGoat = j % 2 === 0;
+      const animalWeight = isGoat ? 40 : 400;
+      const seedDob = new Date(Date.now() - (isGoat ? 1.5 : 2.4) * 365 * 86400000);
+      const lastWeightUpdate = new Date(Date.now() - 35 * 86400000);
+      const nextWeightUpdate = new Date(lastWeightUpdate.getTime() + 30 * 86400000);
+
       await prisma.animal.create({
         data: {
           farmId: farm.id,
-          category: j % 2 === 0 ? "Goat" : "Cow",
-          species: j % 2 === 0 ? "Caprine" : "Bovine",
-          weight: j % 2 === 0 ? 40 : 400,
+          category: isGoat ? "Goat" : "Cow",
+          species: isGoat ? "Caprine" : "Bovine",
+          weight: animalWeight,
+          weightUnit: "kg",
+          dateOfBirth: seedDob,
+          weightLastUpdatedAt: lastWeightUpdate,
+          nextWeightUpdateAt: nextWeightUpdate,
           tag: {
             create: {
               tag: `CW7A29K${i}${j}`, // 8 chars unique logic
               type: "INDIVIDUAL"
             }
+          },
+          weightHistory: {
+            create: [
+              {
+                weight: animalWeight - 5,
+                unit: "kg",
+                recordedBy: farmer.fullName,
+                recorderRole: "FARMER",
+                recordedAt: new Date(Date.now() - 65 * 86400000),
+                source: "FARMER_PORTAL",
+                notes: "Initial registration weight"
+              },
+              {
+                weight: animalWeight,
+                unit: "kg",
+                recordedBy: farmer.fullName,
+                recorderRole: "FARMER",
+                recordedAt: lastWeightUpdate,
+                source: "FARMER_PORTAL",
+                notes: "Monthly weight update"
+              }
+            ]
           }
         }
       });

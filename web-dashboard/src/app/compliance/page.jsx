@@ -1,8 +1,10 @@
 "use client";
 
 import { FileText, Award, ShieldCheck, TrendingUp, CheckCircle2 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function CompliancePage() {
+  const { t } = useLanguage();
   const regions = [
     { name: "North Zone (Punjab / Haryana)", farms: 450, compliance: 96.4, status: "Grade A", violations: 4 },
     { name: "South Zone (Tamil Nadu / Karnataka)", farms: 380, compliance: 98.1, status: "Grade A+", violations: 1 },
@@ -17,9 +19,11 @@ export default function CompliancePage() {
         <div>
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
             <FileText className="w-8 h-8 text-indigo-400" />
-            FSSAI Regulatory Compliance Audits
+            {t("fssaiComplianceAudits", "FSSAI Regulatory Compliance Audits")}
           </h1>
-          <p className="text-slate-400 mt-1">National AMR containment benchmarks and state-wise compliance scorecards.</p>
+          <p className="text-slate-400 mt-1">
+            {t("complianceAuditsDesc", "National AMR containment benchmarks and state-wise compliance scorecards.")}
+          </p>
         </div>
       </div>
 
@@ -28,47 +32,65 @@ export default function CompliancePage() {
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 backdrop-blur-sm">
           <div className="flex items-center gap-3 text-emerald-400 mb-2">
             <Award className="w-6 h-6" />
-            <h3 className="text-slate-400 font-medium text-sm">National Compliance Score</h3>
+            <h3 className="text-slate-400 font-medium text-sm">
+              {t("nationalComplianceScore", "National Compliance Score")}
+            </h3>
           </div>
           <div className="text-3xl font-bold text-white">95.2%</div>
           <p className="text-xs text-emerald-400 mt-2 flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5" /> +2.8% Improvement vs Q1
+            <TrendingUp className="w-3.5 h-3.5" /> {t("improvementVsQ1", "+2.8% Improvement vs Q1")}
           </p>
         </div>
 
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 backdrop-blur-sm">
           <div className="flex items-center gap-3 text-cyan-400 mb-2">
             <ShieldCheck className="w-6 h-6" />
-            <h3 className="text-slate-400 font-medium text-sm">Audited Livestock Facilities</h3>
+            <h3 className="text-slate-400 font-medium text-sm">
+              {t("auditedLivestockFacilities", "Audited Livestock Facilities")}
+            </h3>
           </div>
           <div className="text-3xl font-bold text-white">1,640</div>
-          <p className="text-xs text-slate-400 mt-2">100% On-chain Verified</p>
+          <p className="text-xs text-slate-400 mt-2">{t("onChainVerified100", "100% On-chain Verified")}</p>
         </div>
 
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 backdrop-blur-sm">
           <div className="flex items-center gap-3 text-indigo-400 mb-2">
             <CheckCircle2 className="w-6 h-6" />
-            <h3 className="text-slate-400 font-medium text-sm">MRL Pass Rate</h3>
+            <h3 className="text-slate-400 font-medium text-sm">
+              {t("mrlPassRate", "MRL Pass Rate")}
+            </h3>
           </div>
           <div className="text-3xl font-bold text-white">97.6%</div>
-          <p className="text-xs text-emerald-400 mt-2">Complies with Codex Alimentarius</p>
+          <p className="text-xs text-emerald-400 mt-2">{t("compliesWithCodex", "Complies with Codex Alimentarius")}</p>
         </div>
       </div>
 
       {/* Regional Table */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-xl backdrop-blur-sm overflow-hidden">
         <div className="p-6 border-b border-slate-800">
-          <h2 className="text-lg font-semibold text-white">Regional Compliance Breakdown</h2>
+          <h2 className="text-lg font-semibold text-white">
+            {t("regionalComplianceBreakdown", "Regional Compliance Breakdown")}
+          </h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-900/80 border-b border-slate-800">
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase">Region / Zone</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase">Registered Farms</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase">Active Violations</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase">Compliance Score</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase">Rating</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase">
+                  {t("regionZone", "Region / Zone")}
+                </th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase">
+                  {t("registeredFarms", "Registered Farms")}
+                </th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase">
+                  {t("activeViolations", "Active Violations")}
+                </th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase">
+                  {t("complianceRate", "Compliance Score")}
+                </th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase">
+                  {t("rating", "Rating")}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">

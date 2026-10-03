@@ -11,7 +11,13 @@ async function main() {
     if (rajeshFarmer) {
       await prisma.farmer.update({
         where: { id: rajeshFarmer.id },
-        data: { fullName: 'RAJESH', animalCategories: 'Cow, Goat, Pig, Fish, Chicken, Buffalo' }
+        data: { 
+          fullName: 'RAJESH', 
+          mobileNumber: '8610528491',
+          notificationEmail: 'rajesh.farmer@example.com',
+          emailNotificationsEnabled: true,
+          animalCategories: 'Cow, Goat, Pig, Fish, Chicken, Buffalo' 
+        }
       });
       
       let rajeshFarm = await prisma.farm.findFirst({ where: { farmerId: rajeshFarmer.id } });

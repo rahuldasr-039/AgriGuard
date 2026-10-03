@@ -1,15 +1,24 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Search, User, Shield, Stethoscope, Wheat, FlaskConical, LogOut, Check, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { 
+  Bell, Search, User, Shield, Stethoscope, Wheat, FlaskConical, 
+  LogOut, Check, Sparkles, Globe, ChevronDown, Sun, Moon 
+} from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { useLanguage } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
 
 export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const [role, setRole] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showLangDropdown, setShowLangDropdown] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const langRef = useRef(null);
+  const { language, setLanguage, languages, t } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
 
   const handleSignOut = () => {
     localStorage.removeItem("token");
@@ -66,171 +75,261 @@ export default function Header() {
     setRole(localStorage.getItem("userRole") || "REGULATOR");
   }, [pathname]);
 
+  // Click outside to close language dropdown
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (langRef.current && !langRef.current.contains(e.target)) {
+        setShowLangDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   if (pathname === "/login" || pathname?.startsWith("/certify/verify")) return null;
 
+  const currentLangObj = languages.find(l => l.code === language) || languages[0];
+
   return (
-    <header className="min-h-16 py-2 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md flex flex-wrap items-center justify-between px-4 lg:px-8 sticky top-0 z-30 gap-3">
+    <header className="min-h-16 py-2 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between px-4 lg:px-8 sticky top-0 z-30 gap-3 shadow-xs">
       <div className="flex items-center gap-3 flex-wrap flex-1">
-        <div className="relative w-48 sm:w-64">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+        {/* Universal Search Input */}
+        <div className="relative w-52 sm:w-72">
+          <Search className="w-4 h-4 text-emerald-700/60 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search tags, farms, or alerts..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+            placeholder={t("searchPlaceholder")}
+            title="Search by Farmer ID, Animal Tag, Treatment, or Certificate"
+            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all shadow-xs"
           />
         </div>
 
-        {/* Quick Role Switcher Buttons - Visible Everywhere */}
-        <div className="flex items-center gap-1.5 sm:gap-2 border-l border-slate-800/80 pl-2 sm:pl-3 flex-wrap">
+        {/* Quick Role Switcher Buttons - Clean White & Soft Green */}
+        <div className="flex items-center gap-1.5 sm:gap-2 border-l border-gray-200 pl-2 sm:pl-3 flex-wrap">
           <button
             onClick={() => switchRole("REGULATOR")}
             disabled={switching}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-sm ${
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-xs ${
               role === "REGULATOR" 
-                ? "bg-emerald-500/25 text-emerald-300 border-emerald-500 shadow-emerald-500/10" 
-                : "bg-slate-950 text-slate-300 hover:text-white border-slate-800 hover:border-emerald-500/40"
+                ? "bg-emerald-50 text-emerald-800 border-emerald-500 font-bold" 
+                : "bg-white text-slate-600 hover:text-emerald-800 border-gray-200 hover:border-emerald-300 hover:bg-emerald-50/40"
             }`}
             title="Switch to FSSAI Payment Area"
           >
-            <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span className="whitespace-nowrap">🛡️ FSSAI Payment</span>
-            {role === "REGULATOR" && <Check className="w-3 h-3 text-emerald-400" />}
+            <Shield className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="whitespace-nowrap">🛡️ {t("fssaiPaymentShort", "FSSAI")}</span>
+            {role === "REGULATOR" && <Check className="w-3 h-3 text-emerald-600" />}
           </button>
 
           <button
             onClick={() => switchRole("VETERINARIAN")}
             disabled={switching}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-sm ${
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-xs ${
               role === "VETERINARIAN" 
-                ? "bg-cyan-500/25 text-cyan-300 border-cyan-500 shadow-cyan-500/10" 
-                : "bg-slate-950 text-slate-300 hover:text-white border-slate-800 hover:border-cyan-500/40"
+                ? "bg-emerald-50 text-emerald-800 border-emerald-500 font-bold" 
+                : "bg-white text-slate-600 hover:text-emerald-800 border-gray-200 hover:border-emerald-300 hover:bg-emerald-50/40"
             }`}
-            title="Switch to Veterinarian Medicine Area"
+            title={t("vetMedicine", "Switch to Veterinarian Medicine Area")}
           >
-            <Stethoscope className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <span className="whitespace-nowrap">🩺 Vet Medicine</span>
-            {role === "VETERINARIAN" && <Check className="w-3 h-3 text-cyan-400" />}
+            <Stethoscope className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="whitespace-nowrap">🩺 {t("vetMedicineShort", "Vet")}</span>
+            {role === "VETERINARIAN" && <Check className="w-3 h-3 text-emerald-600" />}
           </button>
 
           <button
             onClick={() => switchRole("FARMER")}
             disabled={switching}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-sm ${
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-xs ${
               role === "FARMER" 
-                ? "bg-amber-500/25 text-amber-300 border-amber-500 shadow-amber-500/10" 
-                : "bg-slate-950 text-slate-300 hover:text-white border-slate-800 hover:border-amber-500/40"
+                ? "bg-emerald-50 text-emerald-800 border-emerald-500 font-bold" 
+                : "bg-white text-slate-600 hover:text-emerald-800 border-gray-200 hover:border-emerald-300 hover:bg-emerald-50/40"
             }`}
-            title="Switch to Farmer Dashboard"
+            title={t("farmerDashboard", "Switch to Farmer Dashboard")}
           >
-            <Wheat className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="whitespace-nowrap">🌾 Farmer</span>
-            {role === "FARMER" && <Check className="w-3 h-3 text-amber-400" />}
+            <Wheat className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="whitespace-nowrap">🌾 {t("farmerDashboardShort", "Farmer")}</span>
+            {role === "FARMER" && <Check className="w-3 h-3 text-emerald-600" />}
           </button>
 
           {/* Direct Gen AI Hub Shortcut */}
           <button
             onClick={() => router.push("/ai-assistant")}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/50 bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-cyan-500/20 text-emerald-300 hover:text-white hover:border-emerald-400 transition-all flex items-center gap-1.5 shadow-sm shadow-emerald-500/20 group"
-            title="Open AgriGuard Gen AI Command Center"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100/80 transition-all flex items-center gap-1.5 shadow-xs"
+            title={t("aiCommandCenter", "Open AgriGuard Gen AI Command Center")}
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform shrink-0" />
-            <span className="whitespace-nowrap">✨ Gen AI Hub</span>
+            <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <span className="whitespace-nowrap">✨ {t("genAi", "Gen AI")}</span>
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <button className="relative p-2 text-slate-400 hover:text-emerald-400 transition-colors">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border border-slate-900"></span>
+      {/* Right Controls: ☀️/🌙 Theme Toggle + 🔔 Notifications + 🌐 Language Selector + 👤 Account */}
+      <div className="flex items-center gap-2.5 sm:gap-3">
+        {/* ☀️ / 🌙 Dual Theme Toggle Button */}
+        <button
+          onClick={toggleTheme}
+          id="theme-toggle-btn"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-slate-700 hover:bg-emerald-50/60 shadow-xs transition-all cursor-pointer"
+          title={theme === "dark" ? `Switch to ${t("themeLight", "Light")} (☀️)` : `Switch to ${t("themeDark", "Dark")} (🌙)`}
+          aria-label="Toggle Light/Dark Theme"
+        >
+          {theme === "dark" ? (
+            <>
+              <Sun className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="font-semibold text-amber-400">☀️ {t("themeLight", "Light")}</span>
+            </>
+          ) : (
+            <>
+              <Moon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span className="font-semibold text-slate-700">🌙 {t("themeDark", "Dark")}</span>
+            </>
+          )}
         </button>
 
+        {/* 🔔 Notifications */}
+        <button 
+          onClick={() => router.push("/alerts")}
+          className="relative p-2 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50/60 rounded-lg transition-colors border border-gray-200 shadow-xs"
+          title={t("notifications")}
+        >
+          <Bell className="w-4 h-4" />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-emerald-500 rounded-full"></span>
+        </button>
+
+        {/* 🌐 Language Selector Dropdown (Requirement 6) */}
+        <div className="relative" ref={langRef}>
+          <button
+            onClick={() => setShowLangDropdown(!showLangDropdown)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-emerald-50/50 hover:border-emerald-300 text-xs font-semibold text-slate-700 shadow-xs transition-all"
+            title={t("chooseLanguage", "Select Language")}
+          >
+            <Globe className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="font-medium text-slate-800">{currentLangObj.native}</span>
+            <ChevronDown className="w-3 h-3 text-slate-400" />
+          </button>
+
+          {showLangDropdown && (
+            <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-lg p-1.5 z-50 animate-in fade-in max-h-80 overflow-y-auto">
+              <div className="px-2.5 py-1.5 text-[10px] uppercase font-bold text-slate-400 border-b border-gray-100">
+                {t("chooseLanguage", "Choose Language (12 Indian Languages)")}
+              </div>
+              <div className="py-1">
+                {languages.map((l) => {
+                  const isSelected = l.code === language;
+                  return (
+                    <button
+                      key={l.code}
+                      onClick={() => {
+                        setLanguage(l.code);
+                        setShowLangDropdown(false);
+                      }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                        isSelected 
+                          ? "bg-emerald-50 text-emerald-800 font-bold" 
+                          : "text-slate-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>{l.flag}</span>
+                        <span>{l.native}</span>
+                        <span className="text-[10px] text-slate-400 font-normal">({l.name})</span>
+                      </span>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 👤 User Account Profile */}
         <div className="relative">
           <button 
             onClick={() => setShowDropdown(!showDropdown)}
-            className="flex items-center gap-3 pl-4 border-l border-slate-800 hover:opacity-80 transition-opacity focus:outline-none"
+            className="flex items-center gap-2.5 pl-3 border-l border-gray-200 hover:opacity-90 transition-opacity focus:outline-none"
           >
-            <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-              <User className="w-4 h-4 text-emerald-400" />
+            <div className="w-8 h-8 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-800">
+              <User className="w-4 h-4" />
             </div>
             <div className="hidden md:block text-left">
-              <p className="text-sm font-medium text-slate-200">My Account</p>
-              <p className="text-xs text-emerald-400 font-semibold uppercase">{role || "Loading..."}</p>
+              <p className="text-xs font-bold text-slate-800 leading-tight">{t("myAccount", "My Account")}</p>
+              <p className="text-[10px] text-emerald-700 font-semibold uppercase">{t(role || "REGULATOR")}</p>
             </div>
           </button>
           
           {showDropdown && (
-            <div className="absolute right-0 mt-3 w-60 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden p-2 z-50 animate-in fade-in">
-              <div className="px-3 py-2 border-b border-slate-800 mb-1">
-                <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block">Current Role</span>
-                <span className="text-xs font-bold text-white uppercase">{role}</span>
+            <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden p-2 z-50 animate-in fade-in">
+              <div className="px-3 py-2 border-b border-gray-100 mb-1">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">{t("currentRole", "Current Role")}</span>
+                <span className="text-xs font-bold text-emerald-800 uppercase">{t(role || "REGULATOR")}</span>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold px-3 pt-1 block">
-                  Switch Module Portal
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold px-3 pt-1 block">
+                  {t("switchPortal", "Switch Portal")}
                 </span>
 
                 <button
                   onClick={() => switchRole("REGULATOR")}
-                  className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                    role === "REGULATOR" ? "bg-emerald-500/20 text-emerald-300 font-bold" : "text-slate-300 hover:bg-slate-800"
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                    role === "REGULATOR" ? "bg-emerald-50 text-emerald-800 font-bold" : "text-slate-700 hover:bg-gray-50"
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-emerald-400" />
-                    FSSAI Payment Area
+                    <Shield className="w-4 h-4 text-emerald-600" />
+                    {t("fssaiPayment", "FSSAI Payment Area")}
                   </span>
-                  {role === "REGULATOR" && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                  {role === "REGULATOR" && <Check className="w-3.5 h-3.5 text-emerald-600" />}
                 </button>
 
                 <button
                   onClick={() => switchRole("VETERINARIAN")}
-                  className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                    role === "VETERINARIAN" ? "bg-cyan-500/20 text-cyan-300 font-bold" : "text-slate-300 hover:bg-slate-800"
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                    role === "VETERINARIAN" ? "bg-emerald-50 text-emerald-800 font-bold" : "text-slate-700 hover:bg-gray-50"
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    <Stethoscope className="w-4 h-4 text-cyan-400" />
-                    Vet Medicine Area
+                    <Stethoscope className="w-4 h-4 text-emerald-600" />
+                    {t("vetMedicine", "Vet Medicine Area")}
                   </span>
-                  {role === "VETERINARIAN" && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                  {role === "VETERINARIAN" && <Check className="w-3.5 h-3.5 text-emerald-600" />}
                 </button>
 
                 <button
                   onClick={() => switchRole("FARMER")}
-                  className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                    role === "FARMER" ? "bg-amber-500/20 text-amber-300 font-bold" : "text-slate-300 hover:bg-slate-800"
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                    role === "FARMER" ? "bg-emerald-50 text-emerald-800 font-bold" : "text-slate-700 hover:bg-gray-50"
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    <Wheat className="w-4 h-4 text-amber-400" />
-                    Farmer Dashboard
+                    <Wheat className="w-4 h-4 text-emerald-600" />
+                    {t("farmerDashboard", "Farmer Dashboard")}
                   </span>
-                  {role === "FARMER" && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                  {role === "FARMER" && <Check className="w-3.5 h-3.5 text-emerald-600" />}
                 </button>
 
                 <button
                   onClick={() => switchRole("FARM_TESTER")}
-                  className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                    role === "FARM_TESTER" ? "bg-purple-500/20 text-purple-300 font-bold" : "text-slate-300 hover:bg-slate-800"
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                    role === "FARM_TESTER" ? "bg-emerald-50 text-emerald-800 font-bold" : "text-slate-700 hover:bg-gray-50"
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    <FlaskConical className="w-4 h-4 text-purple-400" />
-                    Tester Dashboard
+                    <FlaskConical className="w-4 h-4 text-emerald-600" />
+                    {t("testerDashboard", "Tester Dashboard")}
                   </span>
-                  {role === "FARM_TESTER" && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                  {role === "FARM_TESTER" && <Check className="w-3.5 h-3.5 text-emerald-600" />}
                 </button>
               </div>
 
-              <div className="border-t border-slate-800 mt-2 pt-1">
+              <div className="border-t border-gray-100 mt-2 pt-1">
                 <button 
                   onClick={handleSignOut}
-                  className="w-full text-left px-3 py-2 text-xs text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors flex items-center gap-2 font-medium"
+                  className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg transition-colors flex items-center gap-2 font-medium"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  Sign Out
+                  {t("signOut", "Sign Out")}
                 </button>
               </div>
             </div>

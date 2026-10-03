@@ -1,6 +1,7 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
 const { authenticate, authorize } = require("../middleware/auth");
+const { calculateDynamicAge } = require("../services/dosageMaster");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -60,6 +61,9 @@ router.get("/my-profile", authenticate, authorize("FARMER"), async (req, res) =>
                       orderBy: { dateAdministered: "desc" }
                     }
                   }
+                },
+                weightHistory: {
+                  orderBy: { recordedAt: "desc" }
                 }
               }
             },
@@ -99,6 +103,18 @@ router.get("/my-profile", authenticate, authorize("FARMER"), async (req, res) =>
                 data: { status: expectedStatus }
               });
             }
+
+            // Dynamic age and monthly weight update calculation
+            const ageInfo = calculateDynamicAge(a.dateOfBirth);
+            a.age = ageInfo?.formattedAge || "Not specified";
+            a.ageInfo = ageInfo;
+            const isUpdateAvailable = !a.nextWeightUpdateAt || now >= new Date(a.nextWeightUpdateAt);
+            a.isWeightUpdateAvailable = isUpdateAvailable;
+            if (!isUpdateAvailable && a.nextWeightUpdateAt) {
+              a.daysUntilNextUpdate = Math.max(1, Math.ceil((new Date(a.nextWeightUpdateAt) - now) / (1000 * 60 * 60 * 24)));
+            } else {
+              a.daysUntilNextUpdate = 0;
+            }
           }
         }
         if (farm.batches) {
@@ -124,6 +140,108 @@ router.get("/my-profile", authenticate, authorize("FARMER"), async (req, res) =>
     res.status(500).json({ error: error.message });
   }
 });
+
+// Update logged in farmer's profile
+router.patch("/my-profile", authenticate, authorize("FARMER"), async (req, res) => {
+  try {
+    const { mobileNumber, notificationEmail, emailNotificationsEnabled, fullAddress, farmLocation } = req.body;
+    const farmer = await prisma.farmer.findUnique({
+      where: { userId: req.user.id }
+    });
+    if (!farmer) return res.status(404).json({ error: "Farmer profile not found" });
+
+    if (notificationEmail !== undefined && notificationEmail !== null && notificationEmail !== "") {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(notificationEmail.trim())) {
+        return res.status(400).json({ error: "Invalid notification email address format" });
+      }
+    }
+
+    const updated = await prisma.farmer.update({
+      where: { id: farmer.id },
+      data: {
+        mobileNumber: mobileNumber !== undefined ? mobileNumber : farmer.mobileNumber,
+        notificationEmail: notificationEmail !== undefined ? (notificationEmail ? notificationEmail.trim() : null) : farmer.notificationEmail,
+        emailNotificationsEnabled: emailNotificationsEnabled !== undefined ? Boolean(emailNotificationsEnabled) : farmer.emailNotificationsEnabled,
+        fullAddress: fullAddress !== undefined ? fullAddress : farmer.fullAddress,
+        farmLocation: farmLocation !== undefined ? farmLocation : farmer.farmLocation
+      }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/v1/farmers/notification-email - View farmer's dedicated notification email & status
+router.get("/notification-email", authenticate, authorize("FARMER"), async (req, res) => {
+  try {
+    const farmer = await prisma.farmer.findUnique({
+      where: { userId: req.user.id },
+      include: { user: { select: { email: true } } }
+    });
+    if (!farmer) return res.status(404).json({ error: "Farmer profile not found" });
+
+    res.json({
+      farmerId: farmer.farmerId,
+      fullName: farmer.fullName,
+      userEmail: farmer.user?.email,
+      notificationEmail: farmer.notificationEmail || null,
+      emailNotificationsEnabled: farmer.emailNotificationsEnabled,
+      isConfigured: Boolean(farmer.notificationEmail)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PATCH /api/v1/farmers/notification-email - Update farmer's dedicated notification email & status
+router.patch("/notification-email", authenticate, authorize("FARMER"), async (req, res) => {
+  try {
+    const { notificationEmail, emailNotificationsEnabled } = req.body;
+    const farmer = await prisma.farmer.findUnique({
+      where: { userId: req.user.id }
+    });
+    if (!farmer) return res.status(404).json({ error: "Farmer profile not found" });
+
+    if (notificationEmail !== undefined && notificationEmail !== null && notificationEmail !== "") {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(notificationEmail.trim())) {
+        return res.status(400).json({ error: "Invalid email address format. Example: familyfarm@gmail.com" });
+      }
+    }
+
+    const dataToUpdate = {};
+    if (notificationEmail !== undefined) {
+      dataToUpdate.notificationEmail = notificationEmail ? notificationEmail.trim() : null;
+    }
+    if (emailNotificationsEnabled !== undefined) {
+      dataToUpdate.emailNotificationsEnabled = Boolean(emailNotificationsEnabled);
+    }
+
+    const updated = await prisma.farmer.update({
+      where: { id: farmer.id },
+      data: dataToUpdate,
+      include: { user: { select: { email: true } } }
+    });
+
+    console.log(`[EMAIL] Farmer ${updated.farmerId} updated notification email: ${updated.notificationEmail} (Enabled: ${updated.emailNotificationsEnabled})`);
+
+    res.json({
+      success: true,
+      message: "Notification email preferences updated successfully",
+      farmerId: updated.farmerId,
+      userEmail: updated.user?.email,
+      notificationEmail: updated.notificationEmail,
+      emailNotificationsEnabled: updated.emailNotificationsEnabled,
+      isConfigured: Boolean(updated.notificationEmail)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // Get logged in farmer's withdrawal waste & DBT subsidies
 router.get("/my-subsidies", authenticate, authorize("FARMER"), async (req, res) => {
@@ -257,7 +375,7 @@ router.patch("/:id/approval", authenticate, authorize("REGULATOR", "VETERINARIAN
 // Farmer adds a new animal or batch to their farm with full registration details
 router.post("/my-animals", authenticate, authorize("FARMER"), async (req, res) => {
   try {
-    const { category, tag, species, weight, count, isBatch, breed, gender, healthStatus, notes } = req.body;
+    const { category, tag, species, weight, count, isBatch, breed, gender, healthStatus, notes, dateOfBirth } = req.body;
 
     if (!category) {
       return res.status(400).json({ error: "Animal category is required" });
@@ -320,23 +438,61 @@ router.post("/my-animals", authenticate, authorize("FARMER"), async (req, res) =
 
       return res.json({ success: true, item: batch, type: "BATCH", message: `Successfully registered batch ${tagStr} (${batchCount} head)` });
     } else {
+      let parsedDob = null;
+      if (dateOfBirth) {
+        parsedDob = new Date(dateOfBirth);
+        if (isNaN(parsedDob.getTime())) {
+          return res.status(400).json({ error: "Invalid Date of Birth format" });
+        }
+        if (parsedDob > new Date()) {
+          return res.status(400).json({ error: "Date of Birth cannot be in the future" });
+        }
+        const maxAgeDate = new Date();
+        maxAgeDate.setFullYear(maxAgeDate.getFullYear() - 30);
+        if (parsedDob < maxAgeDate) {
+          return res.status(400).json({ error: "Date of Birth must belong to a reasonable animal age range (under 30 years)" });
+        }
+      }
+
       const animalWeight = parseFloat(weight) || 350;
+      const now = new Date();
+      const nextUpdate = new Date(now.getTime() + 30 * 86400000);
+
       const animal = await prisma.animal.create({
         data: {
           farmId: farm.id,
           category,
           species: species || category,
           weight: animalWeight,
+          weightUnit: "kg",
+          dateOfBirth: parsedDob,
+          weightLastUpdatedAt: now,
+          nextWeightUpdateAt: nextUpdate,
           status: healthStatus === "WITHDRAWAL" ? "WITHDRAWAL" : "SAFE",
           tag: {
             create: {
               tag: tagStr,
               type: "INDIVIDUAL"
             }
+          },
+          weightHistory: {
+            create: [
+              {
+                weight: animalWeight,
+                unit: "kg",
+                recordedBy: farmer.fullName,
+                recorderRole: "FARMER",
+                recordedAt: now,
+                source: "FARMER_PORTAL",
+                notes: notes ? notes.trim() : "Initial registration weight"
+              }
+            ]
           }
         },
-        include: { tag: true }
+        include: { tag: true, weightHistory: true }
       });
+
+      const ageInfo = calculateDynamicAge(animal.dateOfBirth);
 
       // Audit Alert Log
       await prisma.alert.create({
@@ -348,13 +504,299 @@ router.post("/my-animals", authenticate, authorize("FARMER"), async (req, res) =
         }
       }).catch(() => {});
 
-      return res.json({ success: true, item: animal, type: "INDIVIDUAL", message: `Successfully registered ${category} (${tagStr})` });
+      return res.json({
+        success: true,
+        item: {
+          ...animal,
+          age: ageInfo?.formattedAge || "Not specified",
+          ageInfo
+        },
+        type: "INDIVIDUAL",
+        message: `Successfully registered ${category} (${tagStr})`
+      });
     }
   } catch (error) {
     console.error("Error adding animal:", error);
     res.status(500).json({ error: error.message });
   }
 });
+
+// GET /api/v1/farmers/animals/:animalId - View single animal profile
+router.get("/animals/:animalId", authenticate, authorize("FARMER"), async (req, res) => {
+  try {
+    const farmer = await prisma.farmer.findUnique({
+      where: { userId: req.user.id },
+      include: { farms: true }
+    });
+    if (!farmer) return res.status(404).json({ error: "Farmer profile not found" });
+
+    const farmIds = farmer.farms.map(f => f.id);
+    const animal = await prisma.animal.findFirst({
+      where: {
+        id: req.params.animalId,
+        farmId: { in: farmIds }
+      },
+      include: {
+        tag: {
+          include: {
+            treatments: {
+              include: { withdrawal: true },
+              orderBy: { dateAdministered: "desc" }
+            }
+          }
+        },
+        weightHistory: {
+          orderBy: { recordedAt: "desc" }
+        }
+      }
+    });
+
+    if (!animal) {
+      return res.status(404).json({ error: "Animal not found or you do not have permission to view it." });
+    }
+
+    const now = new Date();
+    const ageInfo = calculateDynamicAge(animal.dateOfBirth);
+    const isUpdateAvailable = !animal.nextWeightUpdateAt || now >= new Date(animal.nextWeightUpdateAt);
+    let daysUntilNextUpdate = 0;
+    if (!isUpdateAvailable && animal.nextWeightUpdateAt) {
+      daysUntilNextUpdate = Math.max(1, Math.ceil((new Date(animal.nextWeightUpdateAt) - now) / (1000 * 60 * 60 * 24)));
+    }
+
+    res.json({
+      ...animal,
+      age: ageInfo?.formattedAge || "Not specified",
+      ageInfo,
+      isWeightUpdateAvailable: isUpdateAvailable,
+      daysUntilNextUpdate
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PATCH /api/v1/farmers/animals/:animalId - Update animal Date of Birth
+router.patch("/animals/:animalId", authenticate, authorize("FARMER"), async (req, res) => {
+  try {
+    const { dateOfBirth } = req.body;
+    if (!dateOfBirth) {
+      return res.status(400).json({ error: "Date of Birth is required." });
+    }
+
+    const parsedDob = new Date(dateOfBirth);
+    if (isNaN(parsedDob.getTime())) {
+      return res.status(400).json({ error: "Invalid Date of Birth format." });
+    }
+
+    const now = new Date();
+    if (parsedDob > now) {
+      return res.status(400).json({ error: "Date of Birth cannot be later than the current date." });
+    }
+
+    const maxAgeDate = new Date();
+    maxAgeDate.setFullYear(maxAgeDate.getFullYear() - 30);
+    if (parsedDob < maxAgeDate) {
+      return res.status(400).json({ error: "Date of Birth must belong to a reasonable animal age range (under 30 years)." });
+    }
+
+    const farmer = await prisma.farmer.findUnique({
+      where: { userId: req.user.id },
+      include: { farms: true }
+    });
+    if (!farmer) return res.status(404).json({ error: "Farmer profile not found" });
+
+    const farmIds = farmer.farms.map(f => f.id);
+    const animal = await prisma.animal.findFirst({
+      where: { id: req.params.animalId, farmId: { in: farmIds } },
+      include: { tag: true }
+    });
+
+    if (!animal) {
+      return res.status(404).json({ error: "Animal not found or you do not have permission to edit it." });
+    }
+
+    const oldDob = animal.dateOfBirth;
+
+    const updatedAnimal = await prisma.animal.update({
+      where: { id: animal.id },
+      data: { dateOfBirth: parsedDob },
+      include: {
+        tag: true,
+        weightHistory: { orderBy: { recordedAt: "desc" } }
+      }
+    });
+
+    // Create Audit Log entry
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: "ANIMAL_DOB_UPDATE",
+        entity: "Animal",
+        entityId: animal.id,
+        previousData: JSON.stringify({ dateOfBirth: oldDob }),
+        newData: JSON.stringify({ dateOfBirth: parsedDob })
+      }
+    }).catch(err => console.error("AuditLog error:", err.message));
+
+    const ageInfo = calculateDynamicAge(updatedAnimal.dateOfBirth);
+
+    res.json({
+      success: true,
+      message: "Animal Date of Birth updated successfully.",
+      animal: {
+        ...updatedAnimal,
+        age: ageInfo?.formattedAge || "Not specified",
+        ageInfo
+      }
+    });
+  } catch (error) {
+    console.error("Error updating animal DOB:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PATCH /api/v1/farmers/animals/:animalId/weight - Monthly Weight Update (Strict 30-Day Restriction)
+router.patch("/animals/:animalId/weight", authenticate, authorize("FARMER"), async (req, res) => {
+  try {
+    const { weight, notes } = req.body;
+    const parsedWeight = parseFloat(weight);
+
+    if (weight === undefined || weight === null || isNaN(parsedWeight) || parsedWeight <= 0) {
+      return res.status(400).json({ error: "Please enter a valid positive animal weight in kg." });
+    }
+
+    if (parsedWeight > 2500) {
+      return res.status(400).json({ error: "Entered weight exceeds reasonable livestock limits (max 2500 kg)." });
+    }
+
+    const farmer = await prisma.farmer.findUnique({
+      where: { userId: req.user.id },
+      include: { farms: true }
+    });
+    if (!farmer) return res.status(404).json({ error: "Farmer profile not found" });
+
+    const farmIds = farmer.farms.map(f => f.id);
+    const animal = await prisma.animal.findFirst({
+      where: { id: req.params.animalId, farmId: { in: farmIds } },
+      include: { tag: true, weightHistory: { orderBy: { recordedAt: "desc" } } }
+    });
+
+    if (!animal) {
+      return res.status(404).json({ error: "Animal not found or you do not have permission to update its weight." });
+    }
+
+    const now = new Date();
+
+    // STRICT BACKEND ENFORCEMENT: Once per month
+    if (animal.nextWeightUpdateAt && now < new Date(animal.nextWeightUpdateAt)) {
+      const nextAllowed = new Date(animal.nextWeightUpdateAt);
+      const formattedDate = nextAllowed.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric"
+      });
+      const daysRemaining = Math.max(1, Math.ceil((nextAllowed.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+
+      return res.status(400).json({
+        error: `Weight can be updated once per month. Next update available on: ${formattedDate}`,
+        nextUpdateAvailableAt: animal.nextWeightUpdateAt,
+        formattedNextAllowedDate: formattedDate,
+        daysRemaining
+      });
+    }
+
+    const oldWeight = animal.weight;
+    const nextAllowedDate = new Date(now.getTime() + 30 * 86400000);
+
+    // 1. Update Animal record
+    const updatedAnimal = await prisma.animal.update({
+      where: { id: animal.id },
+      data: {
+        weight: parsedWeight,
+        weightUnit: "kg",
+        weightLastUpdatedAt: now,
+        nextWeightUpdateAt: nextAllowedDate
+      },
+      include: { tag: true }
+    });
+
+    // 2. Add to AnimalWeightHistory
+    const historyEntry = await prisma.animalWeightHistory.create({
+      data: {
+        animalId: animal.id,
+        weight: parsedWeight,
+        unit: "kg",
+        recordedBy: farmer.fullName,
+        recorderRole: "FARMER",
+        recordedAt: now,
+        source: "FARMER_PORTAL",
+        notes: notes ? notes.trim() : "Monthly routine weighing"
+      }
+    });
+
+    // 3. Create AuditLog
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: "ANIMAL_WEIGHT_UPDATE",
+        entity: "Animal",
+        entityId: animal.id,
+        previousData: JSON.stringify({
+          weight: oldWeight,
+          weightLastUpdatedAt: animal.weightLastUpdatedAt
+        }),
+        newData: JSON.stringify({
+          weight: parsedWeight,
+          weightLastUpdatedAt: now,
+          nextWeightUpdateAt: nextAllowedDate,
+          historyId: historyEntry.id
+        })
+      }
+    }).catch(err => console.error("AuditLog error:", err.message));
+
+    // Fetch updated weight history
+    const updatedHistory = await prisma.animalWeightHistory.findMany({
+      where: { animalId: animal.id },
+      orderBy: { recordedAt: "desc" }
+    });
+
+    const ageInfo = calculateDynamicAge(updatedAnimal.dateOfBirth);
+
+    res.json({
+      success: true,
+      message: "Animal weight updated successfully.",
+      currentWeight: parsedWeight,
+      weightUnit: "kg",
+      weightLastUpdatedAt: now,
+      nextWeightUpdateAt: nextAllowedDate,
+      animal: {
+        ...updatedAnimal,
+        age: ageInfo?.formattedAge || "Not specified",
+        ageInfo,
+        weightHistory: updatedHistory
+      },
+      weightHistory: updatedHistory
+    });
+  } catch (error) {
+    console.error("Error updating animal weight:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/v1/farmers/animals/:animalId/weight-history
+router.get("/animals/:animalId/weight-history", authenticate, async (req, res) => {
+  try {
+    const { animalId } = req.params;
+    const history = await prisma.animalWeightHistory.findMany({
+      where: { animalId },
+      orderBy: { recordedAt: "desc" }
+    });
+    res.json({ animalId, history });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // Farmer reduces animal count or deregisters animal/batch providing mandatory reason
 router.post("/my-animals/reduce", authenticate, authorize("FARMER"), async (req, res) => {

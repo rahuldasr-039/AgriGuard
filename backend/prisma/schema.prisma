@@ -40,6 +40,8 @@ model Farmer {
   farmerId         String   @unique // e.g., FR10293
   fullName         String
   mobileNumber     String
+  notificationEmail String?
+  emailNotificationsEnabled Boolean @default(true)
   farmLocation     String
   fullAddress      String
   animalCategories String   // JSON array or comma separated
@@ -52,6 +54,7 @@ model Farmer {
   
   approvals        Approval[] @relation("FarmerApprovals")
   certificates     MRLCertificate[]
+  emailNotifications EmailNotification[]
 }
 
 model Veterinarian {
@@ -143,17 +146,38 @@ model AnimalTag {
 }
 
 model Animal {
-  id          String   @id @default(cuid())
-  farmId      String
-  farm        Farm     @relation(fields: [farmId], references: [id], onDelete: Cascade)
-  category    String   // Cow, Buffalo, Goat, Sheep, Pig
-  species     String
-  weight      Float?
-  status      String   @default("SAFE") // SAFE | WITHDRAWAL | DEAD
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                  String                @id @default(cuid())
+  farmId              String
+  farm                Farm                  @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  category            String                // Cow, Buffalo, Goat, Sheep, Pig
+  species             String
+  weight              Float?
+  weightUnit          String?               @default("kg")
+  dateOfBirth         DateTime?
+  weightLastUpdatedAt DateTime?
+  nextWeightUpdateAt  DateTime?
+  status              String                @default("SAFE") // SAFE | WITHDRAWAL | DEAD
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
   
-  tag         AnimalTag?
+  tag                 AnimalTag?
+  weightHistory       AnimalWeightHistory[]
+}
+
+model AnimalWeightHistory {
+  id           String   @id @default(cuid())
+  animalId     String
+  animal       Animal   @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  weight       Float
+  unit         String   @default("kg")
+  recordedBy   String
+  recorderRole String   @default("FARMER")
+  recordedAt   DateTime @default(now())
+  source       String?  @default("FARMER_PORTAL")
+  notes        String?
+
+  @@index([animalId])
+  @@index([recordedAt])
 }
 
 model AnimalBatch {
@@ -231,30 +255,37 @@ model MRLReference {
 // ---------------------------------------------------------
 
 model Treatment {
-  id               String   @id @default(cuid())
-  tagId            String
-  tag              AnimalTag @relation(fields: [tagId], references: [id])
-  vetId            String
-  vet              Veterinarian @relation(fields: [vetId], references: [id])
-  medicineName     String
-  activeIngredient String
-  dose             Float
-  doseUnit         String
-  route            String
-  frequency        String?
-  duration         Float?
-  dateAdministered DateTime
-  foodProduct      String?
-  location         String?
-  notes            String?
-  status           String   @default("ACTIVE") // ACTIVE | COMPLETED | WITHDRAWAL ACTIVE | SAFE | REVIEW REQUIRED
+  id                  String               @id @default(cuid())
+  tagId               String
+  tag                 AnimalTag            @relation(fields: [tagId], references: [id])
+  vetId               String
+  vet                 Veterinarian         @relation(fields: [vetId], references: [id])
+  medicineName        String
+  activeIngredient    String
+  dose                Float
+  doseUnit            String
+  calculatedDose      Float?
+  calculatedVolume    Float?
+  concentration       Float?
+  dosageRuleUsed      String?
+  isDoseOverridden    Boolean              @default(false)
+  overrideReason      String?
+  route               String
+  frequency           String?
+  duration            Float?
+  dateAdministered    DateTime
+  foodProduct         String?
+  location            String?
+  notes               String?
+  status              String               @default("ACTIVE") // ACTIVE | COMPLETED | WITHDRAWAL ACTIVE | SAFE | REVIEW REQUIRED
   
-  withdrawal       WithdrawalRecord?
-  amuRecord        AMURecord?
-  blockchainRecord BlockchainRecord?
+  withdrawal          WithdrawalRecord?
+  amuRecord           AMURecord?
+  blockchainRecord    BlockchainRecord?
+  emailNotifications  EmailNotification[]
   
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 model Vaccination {
@@ -532,4 +563,33 @@ model CertificateAuditLog {
 
   @@index([certificateId])
 }
+
+// ---------------------------------------------------------
+// 9. EMAIL NOTIFICATIONS & COMPLIANCE ALERTS
+// ---------------------------------------------------------
+
+model EmailNotification {
+  id                String      @id @default(cuid())
+  treatmentId       String?
+  treatment         Treatment?  @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  farmerId          String?
+  farmer            Farmer?     @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  recipientEmail    String
+  subject           String
+  notificationType  String      // TREATMENT_CREATED | TREATMENT_UPDATED | WITHDRAWAL_REMINDER | WITHDRAWAL_COMPLETED | MRL_RESULT | CERTIFICATION_UPDATE | TEST_EMAIL
+  message           String
+  status            String      // SENT | FAILED
+  providerMessageId String?
+  sentAt            DateTime?
+  failureReason     String?
+  retryCount        Int         @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([treatmentId])
+  @@index([farmerId])
+  @@index([notificationType])
+  @@index([status])
+}
+
 

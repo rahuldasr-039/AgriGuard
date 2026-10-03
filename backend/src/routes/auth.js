@@ -16,8 +16,18 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    let lookupEmail = email.trim().toLowerCase();
+    if (lookupEmail === "farmer1@example.com") {
+      lookupEmail = "farmer1@gmail.com";
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: lookupEmail },
+          { email: email.trim().toLowerCase() }
+        ]
+      },
       include: {
         farmerProfile: true,
         veterinarianProfile: true,
@@ -63,22 +73,25 @@ router.post("/login", async (req, res) => {
   }
 });
 
+const generateCustomId = (role) => `ID${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+
 // POST /api/v1/auth/register
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, phone, address, role, specificId } = req.body;
-    
+    const { name, email, password, phone, notificationEmail, address, role, specificId } = req.body;
+
     if (!email || !password || !role) {
       return res.status(400).json({ error: "Email, password, and role are required" });
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) return res.status(400).json({ error: "Email already in use" });
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ error: "User already exists with this email" });
+    }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const generatedId = specificId || `ID${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    const generatedId = specificId || generateCustomId(role);
 
-    // Create user
     const user = await prisma.user.create({
       data: {
         email,
@@ -90,12 +103,15 @@ router.post("/register", async (req, res) => {
 
     // Create specific role profile
     if (role === "FARMER") {
+      const regMobile = phone || "";
       await prisma.farmer.create({
         data: {
           farmerId: generatedId,
           userId: user.id,
           fullName: name || "Unknown",
-          mobileNumber: phone || "",
+          mobileNumber: regMobile,
+          notificationEmail: notificationEmail || null,
+          emailNotificationsEnabled: true,
           fullAddress: address || "",
           farmLocation: address || "",
           animalCategories: "Unspecified",

@@ -11,11 +11,18 @@ const testerRoutes = require("./routes/farm-testers");
 const treatmentRoutes = require("./routes/treatments");
 const productTestRoutes = require("./routes/product-tests");
 const certificateRoutes = require("./routes/certificates");
+const notificationRoutes = require("./routes/notifications");
+const { processScheduledEmailNotifications } = require("./services/emailService");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+
+app.use((req, res, next) => {
+  console.log(`[REQ] ${req.method} ${req.originalUrl}`);
+  next();
+});
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 app.use("/api/v1/ai", aiRoutes);
@@ -28,7 +35,16 @@ app.use("/api/v1/testers", testerRoutes);
 app.use("/api/v1/treatments", treatmentRoutes);
 app.use("/api/v1/product-tests", productTestRoutes);
 app.use("/api/v1/certificates", certificateRoutes);
+app.use("/api/v1/notifications", notificationRoutes);
 
 app.listen(PORT, () => {
   console.log(`Backend running on port ${PORT}`);
+  
+  // Background withdrawal reminder & completion check (runs every 10 minutes)
+  setInterval(() => {
+    processScheduledEmailNotifications().catch(err => {
+      console.error("[BACKGROUND] Scheduled email notification error:", err.message);
+    });
+  }, 10 * 60 * 1000);
 });
+

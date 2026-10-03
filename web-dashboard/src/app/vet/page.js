@@ -12,9 +12,11 @@ import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, 
   BarChart, Bar, XAxis, YAxis, CartesianGrid 
 } from "recharts";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function VetDashboard() {
   const router = useRouter();
+  const { t, translateStatus } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [farmersCount, setFarmersCount] = useState(0);
   const [pendingFarmersCount, setPendingFarmersCount] = useState(0);
@@ -52,8 +54,7 @@ export default function VetDashboard() {
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
-          const cutoff = new Date("2026-09-01T00:00:00.000Z");
-          setTreatments(data.filter(t => new Date(t.date) >= cutoff));
+          setTreatments(data);
         }
         setLoading(false);
       })
@@ -140,13 +141,13 @@ export default function VetDashboard() {
               href="/vet/vaccinate"
               className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-emerald-500/20 text-sm flex items-center gap-2"
             >
-              <Syringe className="w-4 h-4" /> + Vaccinate
+              <Syringe className="w-4 h-4" /> + {t("vaccine") || "Vaccinate"}
             </Link>
             <Link
               href="/vet/medicine"
               className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white px-4 py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-cyan-500/20 text-sm flex items-center gap-2"
             >
-              <Pill className="w-4 h-4" /> + Give Medicine
+              <Pill className="w-4 h-4" /> + {t("medicine") || "Give Medicine"}
             </Link>
           </div>
         </div>
@@ -164,17 +165,17 @@ export default function VetDashboard() {
             </div>
             {pendingFarmersCount > 0 && (
               <span className="text-xs font-mono text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded font-bold animate-pulse">
-                {pendingFarmersCount} Pending
+                {pendingFarmersCount} {translateStatus("pending") || "Pending"}
               </span>
             )}
           </div>
-          <h3 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Assigned Farms</h3>
+          <h3 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{t("farmsMonitored") || "Assigned Farms"}</h3>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-extrabold text-white">{loading ? "..." : farmersCount}</span>
-            <span className="text-xs text-slate-500">livestock holdings</span>
+            <span className="text-xs text-slate-500">{t("farmHolding") || "livestock holdings"}</span>
           </div>
           <p className="text-xs text-slate-400 mt-2 flex items-center gap-1 group-hover:text-indigo-300 transition-colors">
-            Manage & verify farmers <ChevronRight className="w-3.5 h-3.5" />
+            {t("myFarmers") || "Manage & verify farmers"} <ChevronRight className="w-3.5 h-3.5" />
           </p>
         </Link>
 
@@ -186,15 +187,15 @@ export default function VetDashboard() {
             <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 group-hover:scale-110 transition-transform">
               <Syringe className="w-6 h-6" />
             </div>
-            <span className="text-xs font-mono text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">0-Day Hold</span>
+            <span className="text-xs font-mono text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">{t("zeroDayWithholding") || "0-Day Hold"}</span>
           </div>
-          <h3 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Vaccinations Given</h3>
+          <h3 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{t("vaccinationsLogged") || "Vaccinations Given"}</h3>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-extrabold text-emerald-400">{loading ? "..." : vaccinationsCount}</span>
-            <span className="text-xs text-slate-500">boosters logged</span>
+            <span className="text-xs text-slate-500">{t("records") || "boosters logged"}</span>
           </div>
           <p className="text-xs text-slate-400 mt-2 flex items-center gap-1 group-hover:text-emerald-300 transition-colors">
-            Log preventative shots <ChevronRight className="w-3.5 h-3.5" />
+            {t("vaccinationPassport") || "Log preventative shots"} <ChevronRight className="w-3.5 h-3.5" />
           </p>
         </Link>
 
@@ -208,13 +209,13 @@ export default function VetDashboard() {
             </div>
             <span className="text-xs font-mono text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded">Prudent AMU</span>
           </div>
-          <h3 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">AMU Prescriptions</h3>
+          <h3 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{t("totalTreatments") || "AMU Prescriptions"}</h3>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-extrabold text-cyan-400">{loading ? "..." : medicinesCount}</span>
-            <span className="text-xs text-slate-500">courses</span>
+            <span className="text-xs text-slate-500">{t("records") || "courses"}</span>
           </div>
           <p className="text-xs text-slate-400 mt-2 flex items-center gap-1 group-hover:text-cyan-300 transition-colors">
-            Issue new prescription <ChevronRight className="w-3.5 h-3.5" />
+            {t("prescribeMedicine") || "Issue new prescription"} <ChevronRight className="w-3.5 h-3.5" />
           </p>
         </Link>
 
@@ -226,15 +227,15 @@ export default function VetDashboard() {
             <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">
               <Activity className="w-6 h-6" />
             </div>
-            <span className="text-xs font-mono text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded">Active</span>
+            <span className="text-xs font-mono text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded">{translateStatus("active") || "Active"}</span>
           </div>
-          <h3 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Active Medical Regimens</h3>
+          <h3 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{t("underWithdrawalHold") || "Active Medical Regimens"}</h3>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-extrabold text-amber-400">{loading ? "..." : activeCount}</span>
-            <span className="text-xs text-slate-500">under withdrawal</span>
+            <span className="text-xs text-slate-500">{t("withdrawalActive") || "under withdrawal"}</span>
           </div>
           <p className="text-xs text-slate-400 mt-2 flex items-center gap-1 group-hover:text-amber-300 transition-colors">
-            Inspect AMU analytics <ChevronRight className="w-3.5 h-3.5" />
+            {t("amuTracking") || "Inspect AMU analytics"} <ChevronRight className="w-3.5 h-3.5" />
           </p>
         </Link>
       </div>
@@ -270,8 +271,8 @@ export default function VetDashboard() {
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm lg:col-span-1">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <h3 className="text-base font-bold text-white">Drug & Vaccine Portfolio</h3>
-              <p className="text-xs text-slate-400">Distribution of administered treatments</p>
+              <h3 className="text-base font-bold text-white">{t("prescriptionDosage") || "Drug & Vaccine Portfolio"}</h3>
+              <p className="text-xs text-slate-400">{t("unifiedPrescriptionRecordsDesc") || "Distribution of administered treatments"}</p>
             </div>
             <BarChart3 className="w-5 h-5 text-cyan-400" />
           </div>
@@ -306,7 +307,7 @@ export default function VetDashboard() {
                   <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></span>
                   <span className="text-slate-300 font-medium truncate max-w-[130px]">{item.name}</span>
                 </div>
-                <span className="font-bold text-white font-mono">{item.value} admin</span>
+                <span className="font-bold text-white font-mono">{item.value}</span>
               </div>
             ))}
           </div>
@@ -316,8 +317,8 @@ export default function VetDashboard() {
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm lg:col-span-2 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
             <div>
-              <h3 className="text-base font-bold text-white">Recent Clinical Administrations</h3>
-              <p className="text-xs text-slate-400">Live ledger of treatments and vaccinations signed by your license</p>
+              <h3 className="text-base font-bold text-white">{t("totalTreatments") || "Recent Clinical Administrations"}</h3>
+              <p className="text-xs text-slate-400">{t("unifiedPrescriptionRecordsDesc") || "Live ledger of treatments and vaccinations signed by your license"}</p>
             </div>
             
             <div className="flex items-center gap-2">
@@ -325,7 +326,7 @@ export default function VetDashboard() {
                 <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Filter treatments..."
+                  placeholder={t("searchTreatmentsPlaceholder") || "Filter treatments..."}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50"
@@ -337,9 +338,9 @@ export default function VetDashboard() {
                 onChange={(e) => setTypeFilter(e.target.value)}
                 className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none"
               >
-                <option value="ALL">All Types</option>
-                <option value="Medicine">Medicines</option>
-                <option value="Vaccine">Vaccines</option>
+                <option value="ALL">{t("allTypes") || "All Types"}</option>
+                <option value="Medicine">{t("medicine") || "Medicines"}</option>
+                <option value="Vaccine">{t("vaccine") || "Vaccines"}</option>
               </select>
             </div>
           </div>
@@ -348,58 +349,58 @@ export default function VetDashboard() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-800/80 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                  <th className="pb-3 px-3">Date</th>
-                  <th className="pb-3 px-3">Type</th>
-                  <th className="pb-3 px-3">Animal / Tag</th>
-                  <th className="pb-3 px-3">Medicine / Booster</th>
-                  <th className="pb-3 px-3">Status</th>
-                  <th className="pb-3 px-3 text-right">Blockchain</th>
+                  <th className="pb-3 px-3">{t("dateAndVet") || "Date"}</th>
+                  <th className="pb-3 px-3">{t("allTypes") || "Type"}</th>
+                  <th className="pb-3 px-3">{t("targetAnimal") || "Animal / Tag"}</th>
+                  <th className="pb-3 px-3">{t("prescriptionDosage") || "Medicine / Booster"}</th>
+                  <th className="pb-3 px-3">{t("currentStatus") || "Status"}</th>
+                  <th className="pb-3 px-3 text-right">{t("treatmentIdBlockchain") || "Blockchain"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-xs">
                 {loading ? (
                   <tr>
-                    <td colSpan="6" className="py-8 text-center text-slate-500">Loading ledger records...</td>
+                    <td colSpan="6" className="py-8 text-center text-slate-500">{t("loadingConnectedRecords") || "Loading ledger records..."}</td>
                   </tr>
                 ) : filteredTreatments.length > 0 ? (
-                  filteredTreatments.slice(0, 7).map((t) => (
+                  filteredTreatments.slice(0, 7).map((tItem) => (
                     <tr 
-                      key={t.id}
-                      onClick={() => setSelectedItem(t)}
+                      key={tItem.id}
+                      onClick={() => setSelectedItem(tItem)}
                       className="hover:bg-slate-800/40 transition-colors cursor-pointer group"
                     >
-                      <td className="py-3 px-3 text-slate-400 font-mono">{new Date(t.date).toLocaleDateString()}</td>
+                      <td className="py-3 px-3 text-slate-400 font-mono">{new Date(tItem.date).toLocaleDateString()}</td>
                       <td className="py-3 px-3">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
-                          t.type === "Medicine" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          tItem.type === "Medicine" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                         }`}>
-                          {t.type === "Medicine" ? <Pill className="w-3 h-3" /> : <Syringe className="w-3 h-3" />}
-                          {t.type}
+                          {tItem.type === "Medicine" ? <Pill className="w-3 h-3" /> : <Syringe className="w-3 h-3" />}
+                          {t(tItem.type?.toLowerCase()) || tItem.type}
                         </span>
                       </td>
                       <td className="py-3 px-3">
-                        <div className="text-white font-medium">{t.animal}</div>
-                        <div className="text-[11px] font-mono text-cyan-400">{t.tag}</div>
+                        <div className="text-white font-medium">{tItem.animal}</div>
+                        <div className="text-[11px] font-mono text-cyan-400 notranslate" translate="no">{tItem.tag}</div>
                       </td>
-                      <td className="py-3 px-3 font-semibold text-white">{t.medicine}</td>
+                      <td className="py-3 px-3 font-semibold text-white">{tItem.medicine}</td>
                       <td className="py-3 px-3">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                          t.status === "Active" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          tItem.status === "Active" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                         }`}>
-                          {t.status === "Active" ? <Clock className="w-2.5 h-2.5" /> : <CheckCircle2 className="w-2.5 h-2.5" />}
-                          {t.status}
+                          {tItem.status === "Active" ? <Clock className="w-2.5 h-2.5" /> : <CheckCircle2 className="w-2.5 h-2.5" />}
+                          {translateStatus(tItem.status) || tItem.status}
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right">
                         <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400">
-                          <ShieldCheck className="w-3.5 h-3.5" /> Verified
+                          <ShieldCheck className="w-3.5 h-3.5" /> {t("verifiedOnVetRegistry") || "Verified"}
                         </span>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="6" className="py-8 text-center text-slate-500">No records found.</td>
+                    <td colSpan="6" className="py-8 text-center text-slate-500">{t("noRecordsFound") || "No records found."}</td>
                   </tr>
                 )}
               </tbody>
@@ -419,7 +420,7 @@ export default function VetDashboard() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">{selectedItem.medicine}</h3>
-                  <p className="text-xs text-slate-400 font-mono">Tag: {selectedItem.tag} • Target: {selectedItem.animal}</p>
+                  <p className="text-xs text-slate-400 font-mono">Tag: <span className="notranslate" translate="no">{selectedItem.tag}</span> • Target: {selectedItem.animal}</p>
                 </div>
               </div>
               <button 
@@ -433,29 +434,29 @@ export default function VetDashboard() {
             <div className="space-y-4 text-xs">
               <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl grid grid-cols-2 gap-3">
                 <div>
-                  <span className="text-slate-500 block mb-1">Date Logged</span>
+                  <span className="text-slate-500 block mb-1">{t("administrationDate") || "Date Logged"}</span>
                   <strong className="text-white text-sm">{new Date(selectedItem.date).toLocaleDateString()}</strong>
                 </div>
                 <div>
-                  <span className="text-slate-500 block mb-1">Status</span>
+                  <span className="text-slate-500 block mb-1">{t("currentStatus") || "Status"}</span>
                   <span className={`font-bold ${selectedItem.status === "Active" ? "text-amber-400" : "text-emerald-400"}`}>
-                    {selectedItem.status}
+                    {translateStatus(selectedItem.status) || selectedItem.status}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block mb-1">Attending Veterinarian</span>
+                  <span className="text-slate-500 block mb-1">{t("attendingVet") || "Attending Veterinarian"}</span>
                   <strong className="text-slate-200">{selectedItem.vet}</strong>
                 </div>
                 <div>
-                  <span className="text-slate-500 block mb-1">Intervention Type</span>
-                  <strong className="text-cyan-400">{selectedItem.type}</strong>
+                  <span className="text-slate-500 block mb-1">{t("allTypes") || "Intervention Type"}</span>
+                  <strong className="text-cyan-400">{t(selectedItem.type?.toLowerCase()) || selectedItem.type}</strong>
                 </div>
               </div>
 
               <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-emerald-400">
                   <ShieldCheck className="w-4 h-4" />
-                  <span className="font-semibold text-white">Cryptographically Certified on Ledger</span>
+                  <span className="font-semibold text-white">{t("sepoliaHashVerified") || "Cryptographically Certified on Ledger"}</span>
                 </div>
                 <button
                   onClick={() => copyHash("0x" + Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2))}
@@ -471,7 +472,7 @@ export default function VetDashboard() {
                 onClick={() => setSelectedItem(null)}
                 className="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2 rounded-xl text-sm font-semibold transition-colors"
               >
-                Close Record
+                {t("close") || "Close Record"}
               </button>
             </div>
           </div>

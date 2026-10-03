@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Activity, AlertTriangle, ShieldCheck, TrendingUp, Users, Coins, CreditCard, CheckCircle2 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function Dashboard() {
+  const { t, translateStatus } = useLanguage();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -54,8 +56,8 @@ export default function Dashboard() {
     <div className="p-8 pb-20">
       <div className="mb-8 flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">FSSAI Regulator Overview</h1>
-          <p className="text-slate-400">Monitor real-time Antimicrobial Usage and Maximum Residue Limits across regions.</p>
+          <h1 className="text-3xl font-bold text-white mb-2">{t("fssaiRegulatorOverview")}</h1>
+          <p className="text-slate-400">{t("fssaiOverviewDesc")}</p>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -63,29 +65,29 @@ export default function Dashboard() {
             className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-4 py-2 rounded-xl transition-all shadow-lg shadow-emerald-500/20 text-sm"
           >
             <Coins className="w-4 h-4" />
-            <span>Waste &amp; Subsidy Payments →</span>
+            <span>{t("wasteSubsidyPaymentsLink")}</span>
           </Link>
           <button className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-4 py-2 rounded-xl font-medium transition-colors">
-            Generate Report
+            {t("generateReport")}
           </button>
         </div>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard title="Farms Monitored" value={data.summary.totalFarms} change="+12%" icon={Users} color="emerald" />
-        <StatCard title="Total AMU (kg)" value={data.summary.totalAmu} change="-5%" icon={Activity} color="cyan" />
-        <StatCard title="Compliance Rate" value={`${data.summary.complianceRate}%`} change="+1.4%" icon={ShieldCheck} color="indigo" />
-        <StatCard title="Critical Alerts" value={data.recentAlerts.length} change="Live" icon={AlertTriangle} color="rose" />
+        <StatCard title={t("farmsMonitored")} value={data.summary.totalFarms} change="+12%" icon={Users} color="emerald" />
+        <StatCard title={t("totalAmuKg")} value={data.summary.totalAmu} change="-5%" icon={Activity} color="cyan" />
+        <StatCard title={t("complianceRate")} value={`${data.summary.complianceRate}%`} change="+1.4%" icon={ShieldCheck} color="indigo" />
+        <StatCard title={t("criticalAlerts")} value={data.recentAlerts.length} change="Live" icon={AlertTriangle} color="rose" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* AMU Trend Chart */}
         <div className="lg:col-span-2 bg-slate-900/50 border border-slate-800 rounded-xl p-6 backdrop-blur-sm">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold text-white">AMU Trend (Last 6 Months)</h2>
+            <h2 className="text-xl font-semibold text-white">{t("amuTrend6Months")}</h2>
             <div className="flex items-center gap-2 text-sm text-slate-400">
-              <span className="flex items-center gap-1 text-emerald-400"><TrendingUp className="w-4 h-4" /> Usage Tracking</span>
+              <span className="flex items-center gap-1 text-emerald-400"><TrendingUp className="w-4 h-4" /> {t("usageTracking")}</span>
             </div>
           </div>
           <div className="h-72">
@@ -112,7 +114,7 @@ export default function Dashboard() {
 
         {/* MRL Compliance Donut */}
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 backdrop-blur-sm">
-          <h2 className="text-xl font-semibold text-white mb-6">MRL Compliance Status</h2>
+          <h2 className="text-xl font-semibold text-white mb-6">{t("mrlCompliance")}</h2>
           <div className="h-64 relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -138,7 +140,7 @@ export default function Dashboard() {
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-3xl font-bold text-white">{data.summary.complianceRate}%</span>
-              <span className="text-xs text-slate-400">Compliant</span>
+              <span className="text-xs text-slate-400">{t("compliant")}</span>
             </div>
           </div>
           <div className="flex flex-col gap-3 mt-4">
@@ -146,7 +148,9 @@ export default function Dashboard() {
               <div key={item.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                  <span className="text-sm text-slate-300">{item.name}</span>
+                  <span className="text-sm text-slate-300">
+                    {item.name === "Compliant" ? t("compliant") : item.name === "Violation" ? t("violation") : item.name}
+                  </span>
                 </div>
                 <span className="text-sm font-medium text-white">{item.value}</span>
               </div>
@@ -158,25 +162,25 @@ export default function Dashboard() {
       {/* Recent Alerts Table */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-xl backdrop-blur-sm overflow-hidden mb-8">
         <div className="p-6 border-b border-slate-800 flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-white">Recent Compliance Alerts</h2>
-          <button className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors">View All Alerts</button>
+          <h2 className="text-xl font-semibold text-white">{t("recentAmrAlerts")}</h2>
+          <Link href="/alerts" className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors">{t("viewAllAlerts")}</Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-900/80">
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Alert ID</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Farm Name</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Violation Type</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Substance</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("citationId") || "Alert ID"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("farmHolding") || "Farm Name"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("severity") || "Violation Type"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("medicineAdministered") || "Substance"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("status") || "Status"}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               {data.recentAlerts.map((alert, idx) => (
                 <tr key={alert.id || `alert-${idx}`} className="hover:bg-slate-800/50 transition-colors cursor-pointer group">
-                  <td className="py-4 px-6 text-sm text-slate-300 font-medium group-hover:text-emerald-400 transition-colors font-mono">{alert.displayId || alert.id}</td>
-                  <td className="py-4 px-6 text-sm text-white">{alert.farm}</td>
+                  <td className="py-4 px-6 text-sm text-slate-300 font-medium group-hover:text-emerald-400 transition-colors font-mono notranslate" translate="no">{alert.displayId || alert.id}</td>
+                  <td className="py-4 px-6 text-sm text-white notranslate" translate="no">{alert.farm}</td>
                   <td className="py-4 px-6 text-sm text-slate-300">{alert.violation}</td>
                   <td className="py-4 px-6 text-sm text-slate-400">{alert.drug}</td>
                   <td className="py-4 px-6 text-sm">
@@ -185,7 +189,7 @@ export default function Dashboard() {
                         ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' 
                         : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                     }`}>
-                      {alert.severity.toUpperCase()}
+                      {translateStatus(alert.severity) || alert.severity.toUpperCase()}
                     </span>
                   </td>
                 </tr>
@@ -199,26 +203,26 @@ export default function Dashboard() {
       <div id="waste-subsidy" className="bg-slate-900/50 border border-slate-800 rounded-xl backdrop-blur-sm overflow-hidden mb-8">
         <div className="p-6 border-b border-slate-800 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-semibold text-white">Waste & Subsidy</h2>
-            <p className="text-xs text-slate-400 mt-1">Tester-submitted withdrawal waste and compensation records</p>
+            <h2 className="text-xl font-semibold text-white">{t("auditedDbtSubsidies")}</h2>
+            <p className="text-xs text-slate-400 mt-1">{t("subsidySubtitle") || "Tester-submitted withdrawal waste and compensation records"}</p>
           </div>
           <Link 
             href="/regulator/waste-subsidy"
             className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20"
           >
-            Open Dedicated View →
+            {t("manageTreasuryDisbursal")}
           </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-900/80">
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Farmer ID</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Product</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Waste Amount</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Subsidy Amount</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Payment Process</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Amount Received</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("tagId") || "Farmer ID"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("productSpecies") || "Product"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">{t("amountProduced") || "Waste Amount"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">{t("assessedSubsidy") || "Subsidy Amount"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("paymentProcess") || "Payment Process"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">{t("amountReceived") || "Amount Received"}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
@@ -227,7 +231,7 @@ export default function Dashboard() {
                   const isPaid = claim.status === "DISBURSED (PAID)" || claim.paymentProcess === "Paid";
                   return (
                     <tr key={claim.id || `claim-${idx}`} className="hover:bg-slate-800/50 transition-colors">
-                      <td className="py-4 px-6 text-sm font-mono text-white font-bold">{claim.farmerId}</td>
+                      <td className="py-4 px-6 text-sm font-mono text-white font-bold notranslate" translate="no">{claim.farmerId}</td>
                       <td className="py-4 px-6 text-sm text-slate-200">
                         <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-800 text-xs text-slate-300">
                           {claim.product || claim.productType}
@@ -238,18 +242,18 @@ export default function Dashboard() {
                       <td className="py-4 px-6 text-sm">
                         {isPaid ? (
                           <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-mono">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Paid
+                            <CheckCircle2 className="w-3.5 h-3.5" /> {translateStatus("disbursed") || "Paid"}
                           </span>
                         ) : (
                           <div className="flex items-center gap-2">
                             <span className="inline-flex items-center text-xs font-medium text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 font-mono">
-                              Pending
+                              {translateStatus("pending") || "Pending"}
                             </span>
                             <Link 
                               href="/regulator/waste-subsidy"
                               className="inline-flex items-center gap-1 text-xs font-bold text-slate-950 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 px-2.5 py-1 rounded-lg transition-all shadow-sm"
                             >
-                              <CreditCard className="w-3 h-3" /> Pay Subsidy
+                              <CreditCard className="w-3 h-3" /> {t("directAccountCredit") || "Pay Subsidy"}
                             </Link>
                           </div>
                         )}
@@ -267,7 +271,7 @@ export default function Dashboard() {
               ) : (
                 <tr>
                   <td colSpan="6" className="py-8 text-center text-slate-500 text-sm">
-                    No waste & subsidy records submitted yet.
+                    {t("noClaimsMatch") || "No waste & subsidy records submitted yet."}
                   </td>
                 </tr>
               )}

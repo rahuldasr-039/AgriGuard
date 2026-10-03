@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { Settings, Save, Shield, Database, BellRing } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function SettingsPage() {
+  const { t } = useLanguage();
   const [sepoliaRpc, setSepoliaRpc] = useState("https://sepolia.infura.io/v3/YOUR_KEY");
   const [contractAddress, setContractAddress] = useState("0x5FbDB2315678afecb367f032d93F642f64180aa3");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -21,9 +23,9 @@ export default function SettingsPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-white flex items-center gap-3">
           <Settings className="w-8 h-8 text-slate-400" />
-          System & Regulatory Settings
+          {t("systemSettings")}
         </h1>
-        <p className="text-slate-400 mt-1">Configure blockchain RPC connections, regulatory MRL standards, and alert thresholds.</p>
+        <p className="text-slate-400 mt-1">{t("settingsDesc")}</p>
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
@@ -31,25 +33,27 @@ export default function SettingsPage() {
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 backdrop-blur-sm">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
             <Database className="w-5 h-5 text-emerald-400" />
-            Ethereum / Sepolia Blockchain Configuration
+            {t("blockchainConfig")}
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Sepolia RPC Provider URL</label>
+              <label className="block text-sm font-medium text-slate-300 mb-1">{t("sepoliaRpcUrl")}</label>
               <input
                 type="text"
                 value={sepoliaRpc}
                 onChange={(e) => setSepoliaRpc(e.target.value)}
-                className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-emerald-500/50"
+                className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-emerald-500/50 notranslate"
+                translate="no"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">TreatmentLedger Contract Address</label>
+              <label className="block text-sm font-medium text-slate-300 mb-1">{t("contractAddress")}</label>
               <input
                 type="text"
                 value={contractAddress}
                 onChange={(e) => setContractAddress(e.target.value)}
-                className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-emerald-500/50"
+                className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-emerald-500/50 notranslate"
+                translate="no"
               />
             </div>
           </div>
@@ -59,11 +63,11 @@ export default function SettingsPage() {
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 backdrop-blur-sm">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
             <Shield className="w-5 h-5 text-cyan-400" />
-            MRL Alerting Limits
+            {t("mrlAlertingLimits")}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Oxytetracycline Milk Limit (µg/kg)</label>
+              <label className="block text-sm font-medium text-slate-300 mb-1">{t("oxytetracyclineLimit")}</label>
               <input
                 type="number"
                 defaultValue={10}
@@ -71,7 +75,7 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Penicillin Meat Limit (µg/kg)</label>
+              <label className="block text-sm font-medium text-slate-300 mb-1">{t("penicillinLimit")}</label>
               <input
                 type="number"
                 defaultValue={50}
@@ -86,8 +90,8 @@ export default function SettingsPage() {
           <div className="flex items-center gap-3">
             <BellRing className="w-5 h-5 text-indigo-400" />
             <div>
-              <div className="text-white font-medium text-sm">Automated SMS & WhatsApp Alerts</div>
-              <div className="text-slate-400 text-xs">Notify veterinarians and district officers upon MRL test failure</div>
+              <div className="text-white font-medium text-sm">{t("automatedEmailAlerts")}</div>
+              <div className="text-slate-400 text-xs">{t("automatedEmailAlertsDesc")}</div>
             </div>
           </div>
           <input
@@ -104,10 +108,10 @@ export default function SettingsPage() {
             type="submit"
             className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2.5 rounded-lg font-medium transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
           >
-            <Save className="w-4 h-4" /> Save Preferences
+            <Save className="w-4 h-4" /> {t("saveSettings")}
           </button>
           {saved && (
-            <span className="text-sm font-medium text-emerald-400">Settings saved successfully!</span>
+            <span className="text-sm font-medium text-emerald-400">{t("settingsSaved")}</span>
           )}
         </div>
       </form>

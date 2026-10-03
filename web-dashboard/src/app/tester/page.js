@@ -14,9 +14,11 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, 
   ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell 
 } from "recharts";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function TesterDashboard() {
   const router = useRouter();
+  const { t, translateStatus, language } = useLanguage();
 
   // Tab State: "surveillance" | "waste"
   const [activeTab, setActiveTab] = useState("surveillance");
@@ -95,12 +97,9 @@ export default function TesterDashboard() {
       const data = await res.json();
 
       if (Array.isArray(data)) {
-        const cutoff = new Date("2026-09-01T00:00:00.000Z");
-        const valid = data.filter(d => new Date(d.testDate) >= cutoff);
-
-        setTests(valid);
-        setTotalTests(valid.length);
-        const nonCompliant = valid.filter(d => d.status === "MRL EXCEEDED" || d.amountDetected > d.applicableMrl).length;
+        setTests(data);
+        setTotalTests(data.length);
+        const nonCompliant = data.filter(d => d.status === "MRL EXCEEDED" || d.amountDetected > d.applicableMrl).length;
         setViolations(nonCompliant);
       }
       setLastUpdated(new Date().toLocaleTimeString());
@@ -271,7 +270,8 @@ export default function TesterDashboard() {
           productType: productType || wasteForm.productType,
           wasteAmount: numAmount,
           unit: unit || wasteForm.unit,
-          animalType: animalType || wasteForm.animalType
+          animalType: animalType || wasteForm.animalType,
+          language
         })
       });
 
@@ -432,17 +432,19 @@ export default function TesterDashboard() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl">Farm Tester Surveillance Dashboard</h1>
+            <h1 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl">
+              {t("testerDashboard") || "Farm Tester Surveillance Dashboard"}
+            </h1>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              FSSAI Certified Portal
+              {t("fssaiTreasuryApproved") || "FSSAI Certified Portal"}
             </span>
           </div>
           <p className="text-slate-400 text-sm sm:text-base max-w-2xl">
-            National FSSAI laboratory portal. Perform quantitative MRL residue determinations, record statutory animal withdrawal waste claims, and anchor verifiable certificates.
+            {t("unifiedPrescriptionRecordsDesc") || "National FSSAI laboratory portal. Perform quantitative MRL residue determinations, record statutory animal withdrawal waste claims, and anchor verifiable certificates."}
           </p>
         </div>
 
@@ -456,14 +458,14 @@ export default function TesterDashboard() {
             className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            <span>Refresh</span>
+            <span>{t("refresh") || "Refresh"}</span>
           </button>
 
           <Link
             href="/tester/new-test"
             className="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 text-sm"
           >
-            <Plus className="w-4 h-4" /> New Product Test
+            <Plus className="w-4 h-4" /> {t("newLabAssay") || "New Product Test"}
           </Link>
         </div>
       </div>
@@ -479,7 +481,7 @@ export default function TesterDashboard() {
           }`}
         >
           <Activity className="w-4 h-4" />
-          <span>MRL Residue Surveillance</span>
+          <span>{t("mrlAnalysis") || "MRL Residue Surveillance"}</span>
         </button>
 
         <button
@@ -491,9 +493,9 @@ export default function TesterDashboard() {
           }`}
         >
           <Coins className="w-4 h-4 text-amber-400" />
-          <span>Withdrawal Waste & Compensation</span>
+          <span>{t("wasteCompensation") || "Withdrawal Waste & Compensation"}</span>
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-            NEW FEATURE
+            NEW
           </span>
         </button>
       </div>

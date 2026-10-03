@@ -33,9 +33,7 @@ export default function TesterHistory() {
     .then(res => res.json())
     .then(data => {
       if (Array.isArray(data)) {
-        const cutoff = new Date("2026-09-01T00:00:00.000Z");
-        const valid = data.filter(d => new Date(d.testDate) >= cutoff);
-        setHistory(valid);
+        setHistory(data);
       }
       setLoading(false);
     })

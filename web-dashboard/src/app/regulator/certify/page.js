@@ -141,7 +141,12 @@ export default function FssaiCertifyPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}` 
         },
-        body: JSON.stringify({ action, reason })
+        body: JSON.stringify({ 
+          action, 
+          reason,
+          validFrom: validFrom ? new Date(validFrom).toISOString() : undefined,
+          validUntil: validUntil ? new Date(validUntil).toISOString() : undefined
+        })
       });
       const resData = await res.json();
       if (!res.ok) throw new Error(resData.error || "Action failed");

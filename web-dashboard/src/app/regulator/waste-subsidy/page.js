@@ -9,9 +9,11 @@ import {
   Building2, UserCheck, AlertCircle
 } from "lucide-react";
 import Link from "next/link";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function RegulatorWasteSubsidy() {
   const router = useRouter();
+  const { t, translateStatus, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [claims, setClaims] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -48,6 +50,7 @@ export default function RegulatorWasteSubsidy() {
             activeQuarantines: 4,
             violationsCount: 0
           },
+          language,
           apiKey
         })
       });
@@ -158,15 +161,15 @@ export default function RegulatorWasteSubsidy() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-mono uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-              FSSAI Regulator Module
+              {t("govtOfIndiaFSSAI") || "FSSAI Regulator Module"}
             </span>
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
             <Coins className="w-8 h-8 text-emerald-400" />
-            Waste &amp; Subsidy Payment Portal
+            {t("dbtSchemeTitle") || "Waste & Subsidy Payment Portal"}
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            Official FSSAI disbursement and audit registry for farmer withdrawal waste compensation.
+            {t("subsidySubtitle") || "Official FSSAI disbursement and audit registry for farmer withdrawal waste compensation."}
           </p>
         </div>
 
@@ -177,7 +180,7 @@ export default function RegulatorWasteSubsidy() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-900 border border-slate-700 hover:border-slate-600 text-slate-200 transition-all shadow-sm disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-emerald-400" : "text-slate-400"}`} />
-            <span>{refreshing ? "Refreshing..." : "Refresh Records"}</span>
+            <span>{refreshing ? "..." : (t("refresh") || "Refresh Records")}</span>
           </button>
         </div>
       </div>
@@ -191,10 +194,10 @@ export default function RegulatorWasteSubsidy() {
             </div>
             <div>
               <strong className="text-white block text-sm font-semibold">
-                Direct Benefit Transfer (DBT) Disbursed Successfully!
+                {t("dbtSchemeTitle") || "Direct Benefit Transfer (DBT)"}: {t("contained") || "Disbursed Successfully!"}
               </strong>
               <p className="text-xs text-emerald-300/80 font-mono">
-                Transferred ₹{Number(paymentSuccess.amount).toLocaleString("en-IN")} to Farmer {paymentSuccess.farmerId} • Reference: {paymentSuccess.transactionId}
+                Transferred ₹{Number(paymentSuccess.amount).toLocaleString("en-IN")} to Farmer <span className="notranslate" translate="no">{paymentSuccess.farmerId}</span> • Reference: <span className="notranslate" translate="no">{paymentSuccess.transactionId}</span>
               </p>
             </div>
           </div>
@@ -210,25 +213,25 @@ export default function RegulatorWasteSubsidy() {
       {/* Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         <div className="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl backdrop-blur-sm">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Total Submissions</span>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">{t("totalSubmissions") || "Total Submissions"}</span>
           <div className="text-3xl font-bold text-white font-mono">{totalClaims}</div>
-          <span className="text-xs text-slate-500 mt-1 block">Verified by accredited farm testers</span>
+          <span className="text-xs text-slate-500 mt-1 block">{t("verifiedByTestingLabs") || "Verified by accredited farm testers"}</span>
         </div>
 
         <div className="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl backdrop-blur-sm">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Total Evaluated Subsidy</span>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">{t("totalSubsidyEntitlement") || "Total Evaluated Subsidy"}</span>
           <div className="text-3xl font-bold text-emerald-400 font-mono">
             ₹{totalSubsidy.toLocaleString("en-IN")}
           </div>
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs text-cyan-400 font-mono">Disbursed: ₹{disbursedTotal.toLocaleString("en-IN")}</span>
+            <span className="text-xs text-cyan-400 font-mono">{t("amountDisbursed") || "Disbursed"}: ₹{disbursedTotal.toLocaleString("en-IN")}</span>
             <span className="text-slate-600">•</span>
-            <span className="text-xs text-amber-400 font-mono">Pending: ₹{pendingDisbursal.toLocaleString("en-IN")}</span>
+            <span className="text-xs text-amber-400 font-mono">{t("pendingDisbursal") || "Pending"}: ₹{pendingDisbursal.toLocaleString("en-IN")}</span>
           </div>
         </div>
 
         <div className="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl backdrop-blur-sm">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Payment Gateway Status</span>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">{t("paymentGateway") || "Payment Gateway Status"}</span>
           <div className="text-3xl font-bold text-cyan-400 flex items-center gap-2">
             <span>DBT Active</span>
             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
@@ -243,14 +246,14 @@ export default function RegulatorWasteSubsidy() {
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search by Farmer ID, Tester ID, or Product..."
+            placeholder={t("searchClaimsPlaceholder") || "Search by Farmer ID, Tester ID, or Product..."}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
           />
         </div>
         <div className="text-xs text-slate-400 font-mono">
-          Showing <strong className="text-white">{filteredClaims.length}</strong> of {claims.length} records
+          {t("showing") || "Showing"} <strong className="text-white">{filteredClaims.length}</strong> {t("of") || "of"} {claims.length} {t("records") || "records"}
         </div>
       </div>
 
@@ -260,9 +263,9 @@ export default function RegulatorWasteSubsidy() {
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-emerald-400" />
-              FSSAI Payment Monitoring Table
+              {t("detailedClaimsTitle") || "FSSAI Payment Monitoring Table"}
             </h2>
-            <p className="text-xs text-slate-400 mt-1">Direct Benefit Transfer (DBT) disbursement registry for statutory withdrawal waste compensation</p>
+            <p className="text-xs text-slate-400 mt-1">{t("detailedClaimsDesc") || "Direct Benefit Transfer (DBT) disbursement registry for statutory withdrawal waste compensation"}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -271,10 +274,10 @@ export default function RegulatorWasteSubsidy() {
               className="bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 hover:from-emerald-500/30 hover:to-cyan-500/30 border border-emerald-500/40 text-emerald-300 font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm group"
             >
               {aiBriefingLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />}
-              <span>✨ Gen AI Audit Briefing</span>
+              <span>✨ {t("regulatorBriefingTool") || "Gen AI Audit Briefing"}</span>
             </button>
             <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
-              {filteredClaims.length} Claims Monitored
+              {filteredClaims.length} {t("claims") || "Claims"}
             </span>
           </div>
         </div>
@@ -283,12 +286,12 @@ export default function RegulatorWasteSubsidy() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-900/90 border-b border-slate-800/80">
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Farmer ID</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Product</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Waste Amount</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Subsidy Amount</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Payment Process</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Amount Received</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("tagId") || "Farmer ID"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("productSpecies") || "Product"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">{t("amountProduced") || "Waste Amount"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">{t("assessedSubsidy") || "Subsidy Amount"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("paymentProcess") || "Payment Process"}</th>
+                <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">{t("amountReceived") || "Amount Received"}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -296,7 +299,7 @@ export default function RegulatorWasteSubsidy() {
                 <tr>
                   <td colSpan="6" className="py-12 text-center text-slate-400 text-sm">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-emerald-400" />
-                    Loading Waste &amp; Subsidy records...
+                    {t("loadingSubsidies") || "Loading Waste & Subsidy records..."}
                   </td>
                 </tr>
               ) : filteredClaims.length > 0 ? (
@@ -308,7 +311,7 @@ export default function RegulatorWasteSubsidy() {
                   return (
                     <tr key={claim.id || `claim-${idx}`} className="hover:bg-slate-800/50 transition-colors">
                       {/* 1. Farmer ID */}
-                      <td className="py-4 px-6 text-sm font-mono text-white font-bold">
+                      <td className="py-4 px-6 text-sm font-mono text-white font-bold notranslate" translate="no">
                         {claim.farmerId}
                       </td>
 
@@ -333,7 +336,7 @@ export default function RegulatorWasteSubsidy() {
                       <td className="py-4 px-6 text-sm">
                         {isPaid ? (
                           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/30 font-mono">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Paid
+                            <CheckCircle2 className="w-3.5 h-3.5" /> {translateStatus("disbursed") || "Paid"}
                           </span>
                         ) : isProcessing ? (
                           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/30 font-mono animate-pulse">
@@ -342,13 +345,13 @@ export default function RegulatorWasteSubsidy() {
                         ) : (
                           <div className="flex items-center gap-2.5">
                             <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30 font-mono">
-                              Pending
+                              {translateStatus("pending") || "Pending"}
                             </span>
                             <button
                               onClick={() => setSelectedPaymentClaim(claim)}
                               className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 transition-all shadow-md shadow-emerald-500/20 active:scale-95"
                             >
-                              <CreditCard className="w-3 h-3" /> Pay Subsidy
+                              <CreditCard className="w-3 h-3" /> {t("directAccountCredit") || "Pay Subsidy"}
                             </button>
                           </div>
                         )}
@@ -372,7 +375,7 @@ export default function RegulatorWasteSubsidy() {
               ) : (
                 <tr>
                   <td colSpan="6" className="py-12 text-center text-slate-500 text-sm">
-                    No waste &amp; subsidy records found.
+                    {t("noClaimsMatch") || "No waste & subsidy records found."}
                   </td>
                 </tr>
               )}
@@ -391,8 +394,8 @@ export default function RegulatorWasteSubsidy() {
                   <CreditCard className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Direct Benefit Transfer (DBT)</h3>
-                  <p className="text-xs text-slate-400 font-mono">Disburse Statutory Withdrawal Subsidy</p>
+                  <h3 className="text-lg font-bold text-white">{t("dbtVoucher") || "Direct Benefit Transfer (DBT)"}</h3>
+                  <p className="text-xs text-slate-400 font-mono">{t("statutoryCompensationCert") || "Disburse Statutory Withdrawal Subsidy"}</p>
                 </div>
               </div>
               <button 
@@ -406,25 +409,25 @@ export default function RegulatorWasteSubsidy() {
             <div className="space-y-4 text-xs">
               <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-3">
                 <div className="flex justify-between items-center border-b border-slate-800/60 pb-2">
-                  <span className="text-slate-400">Claim Citation ID</span>
-                  <span className="font-mono font-bold text-cyan-400">{selectedPaymentClaim.claimId}</span>
+                  <span className="text-slate-400">{t("citationId") || "Claim Citation ID"}</span>
+                  <span className="font-mono font-bold text-cyan-400 notranslate" translate="no">{selectedPaymentClaim.claimId}</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-slate-800/60 pb-2">
-                  <span className="text-slate-400">Beneficiary Farmer</span>
-                  <span className="font-mono font-bold text-white">{selectedPaymentClaim.farmerId} • Verified Producer</span>
+                  <span className="text-slate-400">{t("beneficiaryFarmer") || "Beneficiary Farmer"}</span>
+                  <span className="font-mono font-bold text-white"><span className="notranslate" translate="no">{selectedPaymentClaim.farmerId}</span> • Verified Producer</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-slate-800/60 pb-2">
-                  <span className="text-slate-400">Linked Bank (PFMS/DBT)</span>
+                  <span className="text-slate-400">{t("paymentGateway") || "Linked Bank (PFMS/DBT)"}</span>
                   <span className="font-mono text-slate-300">State Bank of India (A/C: **********4912)</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-slate-800/60 pb-2">
-                  <span className="text-slate-400">Discarded Product</span>
+                  <span className="text-slate-400">{t("productProducedWithheld") || "Discarded Product"}</span>
                   <span className="text-slate-200 font-medium">
                     {selectedPaymentClaim.wasteAmount} {selectedPaymentClaim.unit || 'kg'} of {selectedPaymentClaim.productType || selectedPaymentClaim.product}
                   </span>
                 </div>
                 <div className="flex justify-between items-center pt-1">
-                  <span className="text-slate-400 font-semibold">Sanctioned Compensation Amount</span>
+                  <span className="text-slate-400 font-semibold">{t("assessedSubsidyEntitlement") || "Sanctioned Compensation Amount"}</span>
                   <span className="text-xl font-mono font-extrabold text-emerald-400">
                     ₹{Number(selectedPaymentClaim.aiRecommendedAmount || 0).toLocaleString("en-IN")}
                   </span>
@@ -446,7 +449,7 @@ export default function RegulatorWasteSubsidy() {
                 disabled={processingPayment}
                 className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold transition-colors"
               >
-                Cancel
+                {t("cancel") || "Cancel"}
               </button>
               <button
                 type="button"
@@ -462,7 +465,7 @@ export default function RegulatorWasteSubsidy() {
                 ) : (
                   <>
                     <CreditCard className="w-4 h-4" />
-                    <span>Confirm &amp; Disburse ₹{Number(selectedPaymentClaim.aiRecommendedAmount || 0).toLocaleString("en-IN")}</span>
+                    <span>{t("directAccountCredit") || "Confirm & Disburse"} ₹{Number(selectedPaymentClaim.aiRecommendedAmount || 0).toLocaleString("en-IN")}</span>
                   </>
                 )}
               </button>
@@ -480,13 +483,13 @@ export default function RegulatorWasteSubsidy() {
                   <Sparkles className="w-5 h-5 text-amber-400" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">FSSAI Executive Regulatory Briefing</h3>
+                  <h3 className="text-lg font-bold text-white">{t("regulatorBriefingTool") || "FSSAI Executive Regulatory Briefing"}</h3>
                   <p className="text-xs text-slate-400 font-mono">
                     Engine: {aiBriefingModel || "AgriGuard Domain Synthesizer"}
                   </p>
                 </div>
               </div>
-              <button
+              <button 
                 onClick={() => setShowAiBriefingModal(false)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
               >
@@ -498,7 +501,7 @@ export default function RegulatorWasteSubsidy() {
               {aiBriefingLoading ? (
                 <div className="py-16 text-center text-slate-400 space-y-3">
                   <RefreshCw className="w-8 h-8 animate-spin mx-auto text-emerald-400" />
-                  <p className="font-semibold text-white">Synthesizing Regional Food Safety &amp; DBT Ledger Data...</p>
+                  <p className="font-semibold text-white">{t("generatingBrief") || "Synthesizing Regional Food Safety & DBT Ledger Data..."}</p>
                   <p className="text-xs text-slate-500">Evaluating antimicrobial half-lives, quarantined tags, and treasury payouts.</p>
                 </div>
               ) : (
@@ -513,7 +516,7 @@ export default function RegulatorWasteSubsidy() {
                 onClick={() => setShowAiBriefingModal(false)}
                 className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-5 py-2 rounded-xl text-xs font-semibold"
               >
-                Close
+                {t("close") || "Close"}
               </button>
             </div>
           </div>
